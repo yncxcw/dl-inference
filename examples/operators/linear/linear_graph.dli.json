@@ -1,0 +1,15 @@
+{
+  "format": "dli.graph.v1",
+  "model_type": "operator_linear_example",
+  "inputs": ["input", "weight", "bias"],
+  "outputs": ["output"],
+  "nodes": [
+    {
+      "name": "linear",
+      "op": "linear",
+      "inputs": ["input", "weight", "bias"],
+      "outputs": ["output"],
+      "attrs": {}
+    }
+  ]
+}

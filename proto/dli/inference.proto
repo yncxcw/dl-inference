@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package dli;
+
+message Tensor {
+  string name = 1;
+  string dtype = 2;
+  repeated int64 shape = 3;
+  bytes data = 4;
+}
+
+message InferenceRequest {
+  repeated Tensor inputs = 1;
+}
+
+message InferenceResponse {
+  repeated Tensor outputs = 1;
+}
+
+service InferenceService {
+  rpc Infer(InferenceRequest) returns (InferenceResponse);
+}
