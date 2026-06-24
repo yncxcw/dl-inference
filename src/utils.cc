@@ -1,5 +1,6 @@
 #include "dli/utils.h"
 
+#include <sstream>
 #include <stdexcept>
 
 namespace dli {
@@ -14,6 +15,17 @@ std::int64_t product(const std::vector<std::int64_t>& shape, std::size_t begin,
 
 unsigned ceilDiv(std::int64_t a, std::int64_t b) {
   return static_cast<unsigned>((a + b - 1) / b);
+}
+
+std::string formatShape(const std::vector<std::int64_t>& shape) {
+  std::ostringstream out;
+  out << '[';
+  for (std::size_t i = 0; i < shape.size(); ++i) {
+    if (i != 0) out << ',';
+    out << shape[i];
+  }
+  out << ']';
+  return out.str();
 }
 
 void requireCudaInputs(const std::vector<const Tensor*>& inputs, const std::string& op) {

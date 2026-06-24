@@ -4,13 +4,16 @@
 Python/Triton source at build time, ahead-of-time compiled to cubins, embedded
 into a native `.so`, and loaded by the runtime with `dlopen`.
 
-Runtime inference does not start Python, import Python modules, link
-`libpython`, or use CPU fallback kernels.
+The C++ inference engine and AOT plugin do not start Python, import Python
+modules, link `libpython`, or use CPU fallback kernels. Optional Python
+bindings are available for launching the same C++ engine from Python.
 
 ## What Is Included
 
 - C++ tensor, graph, engine, plugin registry, CUDA allocation, CUDA Driver API
   launcher, weight loading, and KV cache support.
+- `dli::Tensor` is backed by PyTorch/ATen tensors while preserving
+  the runtime-facing `deviceData()` API used by AOT kernels.
 - A generic Triton AOT operator plugin for `dli.graph.v1` graphs.
 - One folder per AOT operator under `python/dli_ops/aot/<operator>/`, each with
   `kernel.py` and `template.cc`.
@@ -35,6 +38,13 @@ The default AOT target is `sm80`. Override it with:
 DLI_AOT_ARCH=90 cmake --build build -j
 ```
 
+The tensor backend is PyTorch/ATen. CMake locates the installed PyTorch C++
+package through:
+
+```bash
+python3 -c "import torch; print(torch.utils.cmake_prefix_path)"
+```
+
 ## Run
 
 ```bash
@@ -50,6 +60,44 @@ build/operators/libdli_triton_aot_ops.so
 ```
 
 and needs a visible NVIDIA GPU compatible with the AOT architecture.
+
+## Python Binding
+
+The build also emits a native Python module under `build/python/dli`. Use it by
+putting that directory on `PYTHONPATH`:
+
+```bash
+PYTHONPATH=build/python python3 - <<'PY'
+import json
+import torch
+import dli
+
+graph = dli.Graph.from_json(json.dumps({
+    "format": "dli.graph.v1",
+    "inputs": ["x"],
+    "outputs": ["y"],
+    "nodes": [{
+        "name": "relu",
+        "op": "aten",
+        "inputs": ["x"],
+        "outputs": ["y"],
+        "attrs": {"name": "aten::relu"},
+    }],
+}))
+
+engine = dli.Engine()
+outputs = engine.run(graph, {"x": torch.tensor([-1.0, 2.0])})
+print(outputs["y"])
+PY
+```
+
+For Triton AOT graphs, load the generated operator plugin before `run`:
+
+```python
+engine = dli.Engine()
+engine.load_library("build/operators/libdli_triton_aot_ops.so")
+outputs = engine.run(graph, inputs)
+```
 
 ## Model Format
 

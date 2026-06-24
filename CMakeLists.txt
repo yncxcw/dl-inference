@@ -5,20 +5,46 @@ option(DLI_BUILD_TESTS "Build unit tests" ON)
 option(DLI_BUILD_EXAMPLES "Build runnable examples" ON)
 option(DLI_ENABLE_GRPC "Build gRPC client/server support" OFF)
 option(DLI_ENABLE_TRITON_AOT "Build Triton AOT GPU operator plugin" ON)
+option(DLI_USE_TORCH_TENSOR "Back dli::Tensor with PyTorch/ATen tensors" ON)
+option(DLI_BUILD_PYTHON_BINDINGS "Build Python bindings for the C++ graph engine" ON)
 
-find_package(Python3 COMPONENTS Interpreter)
+find_package(Python3 COMPONENTS Interpreter Development.Module)
+
+if(NOT DLI_USE_TORCH_TENSOR)
+  message(FATAL_ERROR "DLI_USE_TORCH_TENSOR=OFF is not supported; dli::Tensor is PyTorch/ATen-backed")
+endif()
+
+if(DLI_USE_TORCH_TENSOR)
+  if(NOT Python3_Interpreter_FOUND)
+    message(FATAL_ERROR "DLI_USE_TORCH_TENSOR requires Python3 to locate the installed PyTorch CMake package")
+  endif()
+  execute_process(
+    COMMAND ${Python3_EXECUTABLE} -c "import torch; print(torch.utils.cmake_prefix_path)"
+    OUTPUT_VARIABLE DLI_TORCH_CMAKE_PREFIX
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  get_filename_component(DLI_TORCH_PACKAGE_DIR "${DLI_TORCH_CMAKE_PREFIX}/../.." ABSOLUTE)
+  list(APPEND CMAKE_PREFIX_PATH ${DLI_TORCH_CMAKE_PREFIX})
+  find_package(CUDAToolkit QUIET)
+  if(CUDAToolkit_FOUND AND NOT TARGET CUDA::nvToolsExt)
+    add_library(CUDA::nvToolsExt INTERFACE IMPORTED)
+  endif()
+  find_package(Torch REQUIRED)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(dli_core SHARED
+  src/aten_operator.cc
   src/attributes.cc
   src/cuda_driver.cc
   src/cuda_runtime.cc
   src/engine.cc
   src/graph.cc
   src/kv_cache.cc
+  src/logging.cc
   src/operator_registry.cc
   src/tensor.cc
   src/utils.cc
@@ -34,8 +60,43 @@ target_include_directories(dli_core
 target_compile_features(dli_core PUBLIC cxx_std_20)
 set_target_properties(dli_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+if(DLI_USE_TORCH_TENSOR)
+  target_compile_definitions(dli_core PUBLIC DLI_USE_TORCH_TENSOR=1)
+  target_include_directories(dli_core PUBLIC ${TORCH_INCLUDE_DIRS})
+  target_link_libraries(dli_core PUBLIC ${TORCH_LIBRARIES})
+endif()
+
 if(CMAKE_DL_LIBS)
   target_link_libraries(dli_core PUBLIC ${CMAKE_DL_LIBS})
+endif()
+
+if(DLI_BUILD_PYTHON_BINDINGS)
+  if(NOT Python3_Interpreter_FOUND OR NOT Python3_Development.Module_FOUND)
+    message(FATAL_ERROR "DLI_BUILD_PYTHON_BINDINGS requires Python3 Interpreter and Development.Module")
+  endif()
+  find_library(TORCH_PYTHON_LIBRARY torch_python
+    PATHS ${DLI_TORCH_PACKAGE_DIR}/lib
+    NO_DEFAULT_PATH
+  )
+  if(NOT TORCH_PYTHON_LIBRARY)
+    message(FATAL_ERROR "DLI_BUILD_PYTHON_BINDINGS requires libtorch_python from the installed PyTorch package")
+  endif()
+
+  Python3_add_library(_dli_native MODULE src/python_bindings.cc WITH_SOABI)
+  target_link_libraries(_dli_native PRIVATE dli_core ${TORCH_PYTHON_LIBRARY})
+  target_include_directories(_dli_native PRIVATE ${TORCH_INCLUDE_DIRS})
+  target_compile_features(_dli_native PRIVATE cxx_std_20)
+  set_target_properties(_dli_native PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/python/dli
+    BUILD_RPATH "$<TARGET_FILE_DIR:dli_core>;${DLI_TORCH_PACKAGE_DIR}/lib"
+  )
+  add_custom_command(TARGET _dli_native POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/python/dli
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      ${CMAKE_CURRENT_SOURCE_DIR}/python/dli/__init__.py
+      ${CMAKE_CURRENT_BINARY_DIR}/python/dli/__init__.py
+    VERBATIM
+  )
 endif()
 
 set(DLI_AOT_OPERATOR_NAMES
@@ -67,6 +128,12 @@ endforeach()
 if(DLI_ENABLE_TRITON_AOT AND Python3_Interpreter_FOUND)
   set(DLI_AOT_OP_DIR ${CMAKE_CURRENT_BINARY_DIR}/operators)
   set(DLI_AOT_PLUGIN ${DLI_AOT_OP_DIR}/libdli_triton_aot_ops.so)
+  set(DLI_AOT_EXTRA_INCLUDE_ARGS)
+  if(DLI_USE_TORCH_TENSOR)
+    foreach(torch_include_dir IN LISTS TORCH_INCLUDE_DIRS)
+      list(APPEND DLI_AOT_EXTRA_INCLUDE_ARGS --extra-include-dir ${torch_include_dir})
+    endforeach()
+  endif()
   add_custom_command(
     OUTPUT ${DLI_AOT_PLUGIN}
     COMMAND ${CMAKE_COMMAND} -E env
@@ -78,6 +145,7 @@ if(DLI_ENABLE_TRITON_AOT AND Python3_Interpreter_FOUND)
         --output-dir ${DLI_AOT_OP_DIR}
         --library-name dli_triton_aot_ops
         --kernel-source ${CMAKE_CURRENT_SOURCE_DIR}/python/dli_ops/aot
+        ${DLI_AOT_EXTRA_INCLUDE_ARGS}
     DEPENDS dli_core
       ${CMAKE_CURRENT_SOURCE_DIR}/tools/build_triton_aot_ops.py
       ${DLI_AOT_KERNEL_SOURCES}
@@ -253,6 +321,16 @@ if(DLI_BUILD_TESTS)
     set_tests_properties(dli_export_qwen2 PROPERTIES
       ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/python:${CMAKE_CURRENT_SOURCE_DIR}/examples/qwen2;PYTHONDONTWRITEBYTECODE=1"
     )
+
+    if(TARGET _dli_native)
+      add_test(
+        NAME dli_python_bindings
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_python_bindings.py
+      )
+      set_tests_properties(dli_python_bindings PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/python;PYTHONDONTWRITEBYTECODE=1"
+      )
+    endif()
 
     if(TARGET dli_triton_aot_ops)
       add_test(

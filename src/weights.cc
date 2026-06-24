@@ -2,6 +2,8 @@
 
 #include "dli/cuda_runtime.h"
 
+#include <ATen/ATen.h>
+
 #include <cctype>
 #include <cstddef>
 #include <cstring>
@@ -15,6 +17,16 @@
 
 namespace dli {
 namespace {
+
+at::ScalarType torchDType(DType dtype) {
+  switch (dtype) {
+    case DType::Float32:
+      return at::kFloat;
+    case DType::Int64:
+      return at::kLong;
+  }
+  throw std::invalid_argument("unknown dtype");
+}
 
 struct JsonValue {
   enum class Type { Null, Bool, Int, Number, String, Array, Object };
@@ -207,15 +219,14 @@ std::vector<std::byte> readBytes(const std::filesystem::path& path) {
 Tensor tensorFromBytes(DType dtype, std::vector<std::int64_t> shape,
                        const std::byte* data, std::size_t nbytes,
                        DeviceType device, int device_id) {
-  Tensor host(dtype, std::move(shape));
-  if (host.nbytes() != nbytes) {
+  auto host = at::empty(shape, at::TensorOptions().dtype(torchDType(dtype)).device(at::kCPU));
+  const auto expected_nbytes = static_cast<std::size_t>(host.numel()) * byteSize(dtype);
+  if (expected_nbytes != nbytes) {
     throw std::invalid_argument("weights tensor byte count does not match dtype and shape");
   }
-  std::memcpy(host.rawStorage().data(), data, nbytes);
-  if (device == DeviceType::Cpu) return host;
-  Tensor out = Tensor::cuda(dtype, host.shape(), device_id);
-  cudaMemcpyBytes(out.deviceData(), host.rawStorage().data(), host.nbytes(), CudaMemcpyKind::HostToDevice);
-  return out;
+  std::memcpy(host.data_ptr(), data, nbytes);
+  if (device == DeviceType::Cpu) return Tensor(host);
+  return Tensor(host.to(at::Device(at::kCUDA, device_id)));
 }
 
 }  // namespace

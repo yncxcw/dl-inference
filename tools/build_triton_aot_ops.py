@@ -243,7 +243,8 @@ extern "C" bool dli_register_operators(dli::OperatorRegistry* registry) {
 '''
 
 
-def compile_shared(source: Path, output: Path, include_dir: Path, core_library_dir: Path) -> None:
+def compile_shared(source: Path, output: Path, include_dir: Path, core_library_dir: Path,
+                   extra_include_dirs: list[Path]) -> None:
     cxx = os.environ.get("CXX", "c++")
     cmd = [
         cxx,
@@ -251,6 +252,7 @@ def compile_shared(source: Path, output: Path, include_dir: Path, core_library_d
         "-fPIC",
         "-shared",
         f"-I{include_dir}",
+        *(f"-I{path}" for path in extra_include_dirs),
         str(source),
         f"-L{core_library_dir}",
         "-ldli_core",
@@ -269,6 +271,7 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--library-name", default="dli_triton_aot_ops")
     parser.add_argument("--kernel-source", type=Path, default=Path("python/dli_ops/aot"))
+    parser.add_argument("--extra-include-dir", type=Path, action="append", default=[])
     parser.add_argument("--arch", type=int, default=int(os.environ.get("DLI_AOT_ARCH", "80")))
     args = parser.parse_args()
 
@@ -287,7 +290,7 @@ def main() -> int:
     source = args.output_dir / f"{args.library_name}.cc"
     source.write_text(emit_plugin(compiled, args.kernel_source, OPERATOR_NAMES), encoding="utf-8")
     output = args.output_dir / f"lib{args.library_name}.so"
-    compile_shared(source, output, args.include_dir, args.core_library_dir)
+    compile_shared(source, output, args.include_dir, args.core_library_dir, args.extra_include_dir)
     print(output)
     return 0
 

@@ -4,11 +4,15 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
+
+#include <ATen/ATen.h>
 
 #include "dli/cuda_runtime.h"
 #include "dli/engine.h"
 #include "dli/graph.h"
+#include "dli/logging.h"
 #include "dli/weights.h"
 
 namespace {
@@ -32,7 +36,9 @@ void expect(bool condition, const std::string& message) {
 }
 
 void testHostTensorMetadata() {
-  auto tensor = dli::Tensor::fromFloat32({2, 2}, {1, 2, 3, 4});
+  auto torch_tensor = at::tensor({1.0f, 2.0f, 3.0f, 4.0f},
+                                 at::TensorOptions().dtype(at::kFloat)).view({2, 2});
+  auto tensor = dli::Tensor(torch_tensor);
   expect(tensor.isCpu(), "host tensor device");
   expect(tensor.numel() == 4, "host tensor numel");
   expect(tensor.nbytes() == 16, "host tensor nbytes");
@@ -53,10 +59,107 @@ void testExternalCudaTensorMetadata() {
 
 void testEngineHasNoCpuDeepLearningBuiltins() {
   dli::Engine engine;
+  expect(engine.registry().contains("aten"), "aten dispatcher should be a core builtin");
   expect(!engine.registry().contains("conv2d"), "conv2d must not be a CPU builtin");
   expect(!engine.registry().contains("attention"), "attention must not be a CPU builtin");
   expect(!engine.registry().contains("linear"), "linear must not be a CPU builtin");
   expect(!engine.registry().contains("rms_norm"), "rms_norm must not be a CPU builtin");
+}
+
+void expectAllClose(const at::Tensor& actual, const at::Tensor& expected, double atol = 1.0e-6) {
+  expect(at::allclose(actual, expected, atol, 0.0), "tensor values differ");
+}
+
+void testAtenReluOperator() {
+  dli::Graph graph;
+  graph.model_type = "aten_relu_test";
+  graph.inputs = {"x"};
+  graph.outputs = {"y"};
+  dli::Attributes attrs;
+  attrs.set("name", std::string("aten::relu"));
+  graph.nodes.push_back({"relu", "aten", {"x"}, {"y"}, std::move(attrs)});
+
+  auto input = at::tensor({-1.0f, 0.5f, 2.0f, -3.0f}, at::TensorOptions().dtype(at::kFloat));
+  dli::Engine engine;
+  auto outputs = engine.run(graph, {{"x", dli::Tensor(input)}});
+  expectAllClose(outputs.at("y").torchTensor(), at::relu(input));
+}
+
+void testAtenAddOperator() {
+  dli::Graph graph;
+  graph.model_type = "aten_add_test";
+  graph.inputs = {"lhs", "rhs"};
+  graph.outputs = {"sum"};
+  dli::Attributes attrs;
+  attrs.set("name", std::string("aten::add"));
+  attrs.set("overload", std::string("Tensor"));
+  attrs.set("attr_order", std::vector<std::string>{"alpha"});
+  attrs.set("alpha", 2.0);
+  graph.nodes.push_back({"add", "aten", {"lhs", "rhs"}, {"sum"}, std::move(attrs)});
+
+  auto lhs = at::tensor({1.0f, 2.0f, 3.0f}, at::TensorOptions().dtype(at::kFloat));
+  auto rhs = at::tensor({10.0f, 20.0f, 30.0f}, at::TensorOptions().dtype(at::kFloat));
+  dli::Engine engine;
+  auto outputs = engine.run(graph, {{"lhs", dli::Tensor(lhs)}, {"rhs", dli::Tensor(rhs)}});
+  expectAllClose(outputs.at("sum").torchTensor(), at::add(lhs, rhs, 2.0));
+}
+
+void testDefaultLoggingSeverityLevel() {
+  expect(dli::logLevel() == dli::LogSeverity::Warn, "default logging level is WARN");
+}
+
+void testLoggingMacros() {
+  struct Record {
+    dli::LogSeverity severity;
+    std::string message;
+  };
+  std::vector<Record> records;
+  dli::setLogSink([&](dli::LogSeverity severity, std::string_view, int, std::string_view message) {
+    records.push_back({severity, std::string(message)});
+  });
+  const auto previous_level = dli::logLevel();
+  dli::setLogLevel(dli::LogSeverity::Debug);
+  LOG_DEBUG << "hello " << "debug";
+  LOG_INFO << "hello " << "info";
+  LOG_WARN << "hello " << "warn";
+  LOG_ERROR << "hello " << "error";
+  dli::setLogLevel(previous_level);
+  dli::resetLogSink();
+
+  expect(records.size() == 4, "logging record count");
+  expect(records[0].severity == dli::LogSeverity::Debug, "debug severity");
+  expect(records[0].message == "hello debug", "debug message");
+  expect(records[1].severity == dli::LogSeverity::Info, "info severity");
+  expect(records[1].message == "hello info", "info message");
+  expect(records[2].severity == dli::LogSeverity::Warn, "warn severity");
+  expect(records[2].message == "hello warn", "warn message");
+  expect(records[3].severity == dli::LogSeverity::Error, "error severity");
+  expect(records[3].message == "hello error", "error message");
+}
+
+void testLoggingSeverityLevel() {
+  struct Record {
+    dli::LogSeverity severity;
+    std::string message;
+  };
+  std::vector<Record> records;
+  dli::setLogSink([&](dli::LogSeverity severity, std::string_view, int, std::string_view message) {
+    records.push_back({severity, std::string(message)});
+  });
+  const auto previous_level = dli::logLevel();
+  dli::setLogLevel(dli::LogSeverity::Warn);
+  LOG_DEBUG << "debug";
+  LOG_INFO << "info";
+  LOG_WARN << "warn";
+  LOG_ERROR << "error";
+  dli::setLogLevel(previous_level);
+  dli::resetLogSink();
+
+  expect(records.size() == 2, "logging severity level record count");
+  expect(records[0].severity == dli::LogSeverity::Warn, "warn threshold keeps warn");
+  expect(records[0].message == "warn", "warn threshold message");
+  expect(records[1].severity == dli::LogSeverity::Error, "warn threshold keeps error");
+  expect(records[1].message == "error", "error threshold message");
 }
 
 void testWeightManifestLoad() {
@@ -123,6 +226,11 @@ int main(int argc, char** argv) {
     testHostTensorMetadata();
     testExternalCudaTensorMetadata();
     testEngineHasNoCpuDeepLearningBuiltins();
+    testAtenReluOperator();
+    testAtenAddOperator();
+    testDefaultLoggingSeverityLevel();
+    testLoggingMacros();
+    testLoggingSeverityLevel();
     testWeightManifestLoad();
     testPluginRegistersGenericOperators(args.plugin_path);
     std::cout << "all dli CPU-side contract tests passed";

@@ -4,10 +4,13 @@
 #include <string>
 #include <vector>
 
+#include <ATen/ATen.h>
+
 #include "dli/cuda_runtime.h"
 #include "dli/engine.h"
 #include "dli/graph.h"
 #include "dli/weights.h"
+#include "dli/logging.h"
 
 namespace {
 
@@ -32,9 +35,8 @@ Args parseArgs(int argc, char** argv) {
 dli::Tensor uploadInput() {
   std::vector<float> values(1 * 3 * 32 * 32);
   for (std::size_t i = 0; i < values.size(); ++i) values[i] = static_cast<float>((i % 23) - 11) / 23.0f;
-  dli::Tensor tensor = dli::Tensor::cuda(dli::DType::Float32, {1, 3, 32, 32});
-  dli::cudaMemcpyBytes(tensor.deviceData(), values.data(), tensor.nbytes(), dli::CudaMemcpyKind::HostToDevice);
-  return tensor;
+  auto tensor = at::tensor(values, at::TensorOptions().dtype(at::kFloat)).view({1, 3, 32, 32});
+  return dli::Tensor(tensor.to(at::Device(at::kCUDA, 0)));
 }
 
 std::vector<float> downloadFloat(const dli::Tensor& tensor) {
@@ -48,6 +50,7 @@ std::vector<float> downloadFloat(const dli::Tensor& tensor) {
 int main(int argc, char** argv) {
   try {
     const auto args = parseArgs(argc, argv);
+    dli::setLogLevel(dli::LogSeverity::Debug);
     dli::Engine engine;
     engine.registry().loadLibrary(args.plugin);
     auto tensors = dli::loadWeights(args.weights, dli::DeviceType::Cuda);

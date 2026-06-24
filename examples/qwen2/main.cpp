@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include <ATen/ATen.h>
+
 #include "dli/cuda_runtime.h"
 #include "dli/engine.h"
 #include "dli/graph.h"
@@ -30,10 +32,9 @@ Args parseArgs(int argc, char** argv) {
   return args;
 }
 
-dli::Tensor uploadInt64(std::vector<std::int64_t> shape, const std::vector<std::int64_t>& values) {
-  dli::Tensor tensor = dli::Tensor::cuda(dli::DType::Int64, std::move(shape));
-  dli::cudaMemcpyBytes(tensor.deviceData(), values.data(), tensor.nbytes(), dli::CudaMemcpyKind::HostToDevice);
-  return tensor;
+dli::Tensor torchCudaInt64(std::vector<std::int64_t> shape, const std::vector<std::int64_t>& values) {
+  auto tensor = at::tensor(values, at::TensorOptions().dtype(at::kLong)).view(shape);
+  return dli::Tensor(tensor.to(at::Device(at::kCUDA, 0)));
 }
 
 std::vector<float> downloadFloat(const dli::Tensor& tensor) {
@@ -50,7 +51,7 @@ int main(int argc, char** argv) {
     dli::Engine engine;
     engine.registry().loadLibrary(args.plugin);
     auto tensors = dli::loadWeights(args.weights, dli::DeviceType::Cuda);
-    tensors["input_ids"] = uploadInt64({1}, {2});
+    tensors["input_ids"] = torchCudaInt64({1}, {2});
     auto outputs = engine.run(dli::Graph::fromJsonFile(args.graph), std::move(tensors));
     const auto values = downloadFloat(outputs.at("logits"));
     std::cout << "logits:";

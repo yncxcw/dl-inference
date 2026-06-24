@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -61,7 +62,10 @@ std::vector<std::byte> tensorBytes(const dli::Tensor& tensor) {
   if (tensor.isCuda()) {
     dli::cudaMemcpyBytes(bytes.data(), tensor.deviceData(), bytes.size(), dli::CudaMemcpyKind::DeviceToHost);
   } else {
-    bytes = tensor.rawStorage();
+    const void* source = tensor.dtype() == dli::DType::Float32
+                             ? static_cast<const void*>(tensor.data<float>())
+                             : static_cast<const void*>(tensor.data<std::int64_t>());
+    std::memcpy(bytes.data(), source, bytes.size());
   }
   return bytes;
 }

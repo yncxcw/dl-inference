@@ -5,9 +5,12 @@
 #include <string>
 #include <vector>
 
+#include <ATen/ATen.h>
+
 #include "dli/cuda_runtime.h"
 #include "dli/engine.h"
 #include "dli/graph.h"
+#include "dli/logging.h"
 
 namespace {
 
@@ -27,11 +30,9 @@ Args parseArgs(int argc, char** argv) {
   return args;
 }
 
-dli::Tensor uploadFloat(std::vector<std::int64_t> shape, const std::vector<float>& values) {
-  dli::Tensor tensor = dli::Tensor::cuda(dli::DType::Float32, std::move(shape));
-  if (tensor.numel() != values.size()) throw std::invalid_argument("float upload size mismatch");
-  dli::cudaMemcpyBytes(tensor.deviceData(), values.data(), tensor.nbytes(), dli::CudaMemcpyKind::HostToDevice);
-  return tensor;
+dli::Tensor torchCudaFloat(std::vector<std::int64_t> shape, const std::vector<float>& values) {
+  auto tensor = at::tensor(values, at::TensorOptions().dtype(at::kFloat)).view(shape);
+  return dli::Tensor(tensor.to(at::Device(at::kCUDA, 0)));
 }
 
 std::vector<float> downloadFloat(const dli::Tensor& tensor) {
@@ -42,9 +43,9 @@ std::vector<float> downloadFloat(const dli::Tensor& tensor) {
 
 dli::TensorMap linearInputs() {
   dli::TensorMap inputs;
-  inputs["input"] = uploadFloat({2, 4}, {1, 2, 3, 4, 5, 6, 7, 8});
-  inputs["weight"] = uploadFloat({3, 4}, {1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1});
-  inputs["bias"] = uploadFloat({3}, {0.5f, -1.0f, 2.0f});
+  inputs["input"] = torchCudaFloat({2, 4}, {1, 2, 3, 4, 5, 6, 7, 8});
+  inputs["weight"] = torchCudaFloat({3, 4}, {1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1});
+  inputs["bias"] = torchCudaFloat({3}, {0.5f, -1.0f, 2.0f});
   return inputs;
 }
 
@@ -53,7 +54,9 @@ dli::TensorMap linearInputs() {
 int main(int argc, char** argv) {
   try {
     const auto args = parseArgs(argc, argv);
+    dli::setLogLevel(dli::LogSeverity::Debug);
     dli::Engine engine;
+    std::cout << "loading plugin: " << args.plugin << "\n";
     engine.registry().loadLibrary(args.plugin);
     auto outputs = engine.run(dli::Graph::fromJsonFile(args.graph), linearInputs());
     const auto values = downloadFloat(outputs.at("output"));
