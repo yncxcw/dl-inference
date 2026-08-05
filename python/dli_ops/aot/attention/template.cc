@@ -24,7 +24,8 @@ class AttentionOp final : public dli::Operator {
     if (attrs.contains("scale")) throw std::invalid_argument("AOT attention currently supports default scale only");
     *outputs[0] = dli::Tensor::cuda(dli::DType::Float32, inputs[0]->shape(), inputs[0]->deviceId());
     void* q = ptr(*inputs[0]); void* k = ptr(*inputs[1]); void* v = ptr(*inputs[2]); void* out = ptr(*outputs[0]);
-    void* args[] = {&q, &k, &v, &out};
+    void* triton_scratch = nullptr;
+    void* args[] = {&q, &k, &v, &out, &triton_scratch};
     dli::CudaAotKernel* kernel = nullptr;
     if (seq_q == 1 && seq_k == 1 && head_dim == 2 && !causal) kernel = &attention_q1_k1_d2_c0_{{HASH_attention_q1_k1_d2_c0}}_kernel();
     if (seq_q == 1 && seq_k == 1 && head_dim == 2 && causal) kernel = &attention_q1_k1_d2_c1_{{HASH_attention_q1_k1_d2_c1}}_kernel();

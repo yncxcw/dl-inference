@@ -157,87 +157,12 @@ elseif(DLI_ENABLE_TRITON_AOT)
 endif()
 
 if(DLI_BUILD_EXAMPLES)
-  add_executable(dli_operator_linear examples/operators/linear/main.cpp)
-  target_link_libraries(dli_operator_linear PRIVATE dli_core)
-  if(TARGET dli_triton_aot_ops)
-    add_dependencies(dli_operator_linear dli_triton_aot_ops)
-  endif()
-
-  if(Python3_Interpreter_FOUND)
-    set(DLI_ALEXNET_EXPORT_DIR ${CMAKE_CURRENT_BINARY_DIR}/examples/alexnet)
-    add_custom_command(
-      OUTPUT
-        ${DLI_ALEXNET_EXPORT_DIR}/alexnet.dli.json
-        ${DLI_ALEXNET_EXPORT_DIR}/alexnet.dli.weights.json
-        ${DLI_ALEXNET_EXPORT_DIR}/alexnet.dli.weights.bin
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${DLI_ALEXNET_EXPORT_DIR}
-      COMMAND ${CMAKE_COMMAND} -E env
-        PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/python:${CMAKE_CURRENT_SOURCE_DIR}/examples/alexnet
-        PYTHONDONTWRITEBYTECODE=1
-        ${Python3_EXECUTABLE} -m dli_export.export
-          --model alexnet:create_model
-          --example-shape 1,3,32,32
-          --output-dir ${DLI_ALEXNET_EXPORT_DIR}
-          --model-type alexnet_tiny
-          --stem alexnet
-      DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/examples/alexnet/alexnet.py
-        ${CMAKE_CURRENT_SOURCE_DIR}/python/dli_export/export.py
-        ${CMAKE_CURRENT_SOURCE_DIR}/python/dli_export/weights.py
-      VERBATIM
-    )
-    add_custom_target(dli_alexnet_export ALL
-      DEPENDS
-        ${DLI_ALEXNET_EXPORT_DIR}/alexnet.dli.json
-        ${DLI_ALEXNET_EXPORT_DIR}/alexnet.dli.weights.json
-        ${DLI_ALEXNET_EXPORT_DIR}/alexnet.dli.weights.bin
-    )
-
-    set(DLI_QWEN2_EXPORT_DIR ${CMAKE_CURRENT_BINARY_DIR}/examples/qwen2)
-    add_custom_command(
-      OUTPUT
-        ${DLI_QWEN2_EXPORT_DIR}/qwen2.dli.json
-        ${DLI_QWEN2_EXPORT_DIR}/qwen2.dli.weights.json
-        ${DLI_QWEN2_EXPORT_DIR}/qwen2.dli.weights.bin
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${DLI_QWEN2_EXPORT_DIR}
-      COMMAND ${CMAKE_COMMAND} -E env
-        PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/python:${CMAKE_CURRENT_SOURCE_DIR}/examples/qwen2
-        PYTHONDONTWRITEBYTECODE=1
-        ${Python3_EXECUTABLE} -m dli_export.export
-          --model qwen2:create_model
-          --output-dir ${DLI_QWEN2_EXPORT_DIR}
-          --model-type qwen2
-          --stem qwen2
-      DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/examples/qwen2/qwen2.py
-        ${CMAKE_CURRENT_SOURCE_DIR}/python/dli_export/export.py
-        ${CMAKE_CURRENT_SOURCE_DIR}/python/dli_export/weights.py
-      VERBATIM
-    )
-    add_custom_target(dli_qwen2_export ALL
-      DEPENDS
-        ${DLI_QWEN2_EXPORT_DIR}/qwen2.dli.json
-        ${DLI_QWEN2_EXPORT_DIR}/qwen2.dli.weights.json
-        ${DLI_QWEN2_EXPORT_DIR}/qwen2.dli.weights.bin
-    )
-  endif()
-
-  add_executable(dli_alexnet examples/alexnet/main.cpp)
-  target_link_libraries(dli_alexnet PRIVATE dli_core)
-  if(TARGET dli_alexnet_export)
-    add_dependencies(dli_alexnet dli_alexnet_export)
+  add_custom_target(dli_examples ALL)
+  if(TARGET _dli_native)
+    add_dependencies(dli_examples _dli_native)
   endif()
   if(TARGET dli_triton_aot_ops)
-    add_dependencies(dli_alexnet dli_triton_aot_ops)
-  endif()
-
-  add_executable(dli_qwen2 examples/qwen2/main.cpp)
-  target_link_libraries(dli_qwen2 PRIVATE dli_core)
-  if(TARGET dli_qwen2_export)
-    add_dependencies(dli_qwen2 dli_qwen2_export)
-  endif()
-  if(TARGET dli_triton_aot_ops)
-    add_dependencies(dli_qwen2 dli_triton_aot_ops)
+    add_dependencies(dli_examples dli_triton_aot_ops)
   endif()
 endif()
 
@@ -276,15 +201,46 @@ endif()
 if(DLI_BUILD_TESTS)
   enable_testing()
 
-  add_executable(dli_tests tests/test_main.cc)
-  target_link_libraries(dli_tests PRIVATE dli_core)
-  if(TARGET dli_triton_aot_ops)
-    add_dependencies(dli_tests dli_triton_aot_ops)
-    set(DLI_TEST_PLUGIN_ARG ${DLI_AOT_PLUGIN})
-  else()
-    set(DLI_TEST_PLUGIN_ARG "")
+  function(dli_add_cpp_test target source)
+    add_executable(${target} ${source})
+    target_link_libraries(${target} PRIVATE dli_core)
+    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/cpp)
+    add_test(NAME ${target} COMMAND ${target})
+  endfunction()
+
+  dli_add_cpp_test(dli_test_attributes tests/cpp/test_attributes.cc)
+  dli_add_cpp_test(dli_test_aten_operator tests/cpp/test_aten_operator.cc)
+  dli_add_cpp_test(dli_test_cuda_aot_kernel tests/cpp/test_cuda_aot_kernel.cc)
+  dli_add_cpp_test(dli_test_cuda_runtime tests/cpp/test_cuda_runtime.cc)
+  dli_add_cpp_test(dli_test_engine tests/cpp/test_engine.cc)
+  dli_add_cpp_test(dli_test_graph tests/cpp/test_graph.cc)
+  dli_add_cpp_test(dli_test_kv_cache tests/cpp/test_kv_cache.cc)
+  dli_add_cpp_test(dli_test_log_message tests/cpp/test_log_message.cc)
+  dli_add_cpp_test(dli_test_tensor tests/cpp/test_tensor.cc)
+  dli_add_cpp_test(dli_test_utils tests/cpp/test_utils.cc)
+  dli_add_cpp_test(dli_test_weights tests/cpp/test_weights.cc)
+
+  if(TARGET dli_grpc)
+    add_executable(dli_test_grpc_client tests/cpp/test_grpc_client.cc)
+    target_link_libraries(dli_test_grpc_client PRIVATE dli_grpc)
+    target_include_directories(dli_test_grpc_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/cpp)
+    add_test(NAME dli_test_grpc_client COMMAND dli_test_grpc_client)
+
+    add_executable(dli_test_grpc_server tests/cpp/test_grpc_server.cc)
+    target_link_libraries(dli_test_grpc_server PRIVATE dli_grpc)
+    target_include_directories(dli_test_grpc_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/cpp)
+    add_test(NAME dli_test_grpc_server COMMAND dli_test_grpc_server)
   endif()
-  add_test(NAME dli_tests COMMAND dli_tests --plugin ${DLI_TEST_PLUGIN_ARG})
+
+  add_executable(dli_test_operator_registry tests/cpp/test_operator_registry.cc)
+  target_link_libraries(dli_test_operator_registry PRIVATE dli_core)
+  target_include_directories(dli_test_operator_registry PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/cpp)
+  if(TARGET dli_triton_aot_ops)
+    add_dependencies(dli_test_operator_registry dli_triton_aot_ops)
+    add_test(NAME dli_test_operator_registry COMMAND dli_test_operator_registry --plugin ${DLI_AOT_PLUGIN})
+  else()
+    add_test(NAME dli_test_operator_registry COMMAND dli_test_operator_registry)
+  endif()
 
   add_executable(dli_operator_engine_runner tests/operator_engine_runner.cc)
   target_link_libraries(dli_operator_engine_runner PRIVATE dli_core)
@@ -293,53 +249,83 @@ if(DLI_BUILD_TESTS)
   endif()
 
   if(Python3_Interpreter_FOUND)
+    set(DLI_PYTHON_MODULE_PATH
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/python:${CMAKE_CURRENT_SOURCE_DIR}/python:${CMAKE_CURRENT_SOURCE_DIR}/examples/alexnet:${CMAKE_CURRENT_SOURCE_DIR}/examples/qwen2"
+    )
+    set(DLI_PYTHON_NATIVE_PATH
+      "${CMAKE_CURRENT_BINARY_DIR}/python:${DLI_PYTHON_MODULE_PATH}"
+    )
+
+    function(dli_add_python_module_test name script)
+      add_test(NAME ${name} COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/${script})
+      set_tests_properties(${name} PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${DLI_PYTHON_MODULE_PATH};PYTHONDONTWRITEBYTECODE=1"
+      )
+    endfunction()
+
     add_test(
       NAME dli_triton_aot_operator_specs
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/build_triton_aot_ops.py --list
     )
 
-    add_test(
-      NAME dli_export_linear
-      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_export_linear.py
-    )
-    set_tests_properties(dli_export_linear PROPERTIES
-      ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/python;PYTHONDONTWRITEBYTECODE=1"
-    )
-
-    add_test(
-      NAME dli_export_alexnet
-      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_export_alexnet.py
-    )
-    set_tests_properties(dli_export_alexnet PROPERTIES
-      ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/python:${CMAKE_CURRENT_SOURCE_DIR}/examples/alexnet;PYTHONDONTWRITEBYTECODE=1"
-    )
-
-    add_test(
-      NAME dli_export_qwen2
-      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_export_qwen2.py
-    )
-    set_tests_properties(dli_export_qwen2 PROPERTIES
-      ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/python:${CMAKE_CURRENT_SOURCE_DIR}/examples/qwen2;PYTHONDONTWRITEBYTECODE=1"
-    )
+    dli_add_python_module_test(dli_py_dli_export_init tests/python/test_dli_export_init.py)
+    dli_add_python_module_test(dli_py_dli_export_weights tests/python/test_dli_export_weights.py)
+    dli_add_python_module_test(dli_py_dli_export_export tests/python/test_dli_export_export.py)
+    dli_add_python_module_test(dli_py_dli_ops_init tests/python/test_dli_ops_init.py)
+    dli_add_python_module_test(dli_py_dli_ops_spec tests/python/test_dli_ops_spec.py)
+    dli_add_python_module_test(dli_py_dli_ops_aot_init tests/python/test_dli_ops_aot_init.py)
+    dli_add_python_module_test(dli_py_aot_add_kernel tests/python/aot/test_add_kernel.py)
+    dli_add_python_module_test(dli_py_aot_attention_kernel tests/python/aot/test_attention_kernel.py)
+    dli_add_python_module_test(dli_py_aot_conv2d_kernel tests/python/aot/test_conv2d_kernel.py)
+    dli_add_python_module_test(dli_py_aot_embedding_kernel tests/python/aot/test_embedding_kernel.py)
+    dli_add_python_module_test(dli_py_aot_linear_kernel tests/python/aot/test_linear_kernel.py)
+    dli_add_python_module_test(dli_py_aot_matmul_kernel tests/python/aot/test_matmul_kernel.py)
+    dli_add_python_module_test(dli_py_aot_max_pool2d_kernel tests/python/aot/test_max_pool2d_kernel.py)
+    dli_add_python_module_test(dli_py_aot_mul_kernel tests/python/aot/test_mul_kernel.py)
+    dli_add_python_module_test(dli_py_aot_relu_kernel tests/python/aot/test_relu_kernel.py)
+    dli_add_python_module_test(dli_py_aot_reshape_kernel tests/python/aot/test_reshape_kernel.py)
+    dli_add_python_module_test(dli_py_aot_rms_norm_kernel tests/python/aot/test_rms_norm_kernel.py)
+    dli_add_python_module_test(dli_py_aot_rotary_kernel tests/python/aot/test_rotary_kernel.py)
+    dli_add_python_module_test(dli_py_aot_silu_kernel tests/python/aot/test_silu_kernel.py)
+    dli_add_python_module_test(dli_py_aot_softmax_kernel tests/python/aot/test_softmax_kernel.py)
+    dli_add_python_module_test(dli_py_aot_transpose_kernel tests/python/aot/test_transpose_kernel.py)
 
     if(TARGET _dli_native)
       add_test(
-        NAME dli_python_bindings
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_python_bindings.py
+        NAME dli_py_dli_module
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_dli_module.py
       )
-      set_tests_properties(dli_python_bindings PROPERTIES
-        ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/python;PYTHONDONTWRITEBYTECODE=1"
+      set_tests_properties(dli_py_dli_module PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${DLI_PYTHON_NATIVE_PATH};PYTHONDONTWRITEBYTECODE=1"
       )
     endif()
 
     if(TARGET dli_triton_aot_ops)
-      add_test(
-        NAME dli_aot_operator_numerics
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_aot_operator_numerics.py
-      )
-      set_tests_properties(dli_aot_operator_numerics PROPERTIES
-        ENVIRONMENT "DLI_OP_TEST_RUNNER=$<TARGET_FILE:dli_operator_engine_runner>;DLI_AOT_PLUGIN=${DLI_AOT_PLUGIN};PYTHONDONTWRITEBYTECODE=1"
-      )
+      function(dli_add_aot_operator_numeric_test name script)
+        add_test(
+          NAME ${name}
+          COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/${script}
+        )
+        set_tests_properties(${name} PROPERTIES
+          ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/tests/operators;DLI_OP_TEST_RUNNER=$<TARGET_FILE:dli_operator_engine_runner>;DLI_AOT_PLUGIN=${DLI_AOT_PLUGIN};PYTHONDONTWRITEBYTECODE=1"
+        )
+      endfunction()
+
+      dli_add_aot_operator_numeric_test(dli_aot_add_numerics tests/operators/test_add.py)
+      dli_add_aot_operator_numeric_test(dli_aot_attention_numerics tests/operators/test_attention.py)
+      dli_add_aot_operator_numeric_test(dli_aot_conv2d_numerics tests/operators/test_conv2d.py)
+      dli_add_aot_operator_numeric_test(dli_aot_embedding_numerics tests/operators/test_embedding.py)
+      dli_add_aot_operator_numeric_test(dli_aot_linear_numerics tests/operators/test_linear.py)
+      dli_add_aot_operator_numeric_test(dli_aot_matmul_numerics tests/operators/test_matmul.py)
+      dli_add_aot_operator_numeric_test(dli_aot_max_pool2d_numerics tests/operators/test_max_pool2d.py)
+      dli_add_aot_operator_numeric_test(dli_aot_mul_numerics tests/operators/test_mul.py)
+      dli_add_aot_operator_numeric_test(dli_aot_relu_numerics tests/operators/test_relu.py)
+      dli_add_aot_operator_numeric_test(dli_aot_reshape_numerics tests/operators/test_reshape.py)
+      dli_add_aot_operator_numeric_test(dli_aot_rms_norm_numerics tests/operators/test_rms_norm.py)
+      dli_add_aot_operator_numeric_test(dli_aot_rotary_embedding_numerics tests/operators/test_rotary_embedding.py)
+      dli_add_aot_operator_numeric_test(dli_aot_silu_numerics tests/operators/test_silu.py)
+      dli_add_aot_operator_numeric_test(dli_aot_softmax_numerics tests/operators/test_softmax.py)
+      dli_add_aot_operator_numeric_test(dli_aot_transpose_numerics tests/operators/test_transpose.py)
 
       add_test(
         NAME dli_no_python_runtime_link
@@ -348,6 +334,24 @@ if(DLI_BUILD_TESTS)
           -DDLI_PLUGIN=${DLI_AOT_PLUGIN}
           -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_no_libpython.cmake
       )
+
+      if(TARGET _dli_native)
+        add_test(
+          NAME dli_e2e_alexnet
+          COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/e2e/test_models.py --model alexnet
+        )
+        set_tests_properties(dli_e2e_alexnet PROPERTIES
+          ENVIRONMENT "PYTHONPATH=${DLI_PYTHON_NATIVE_PATH};DLI_AOT_PLUGIN=${DLI_AOT_PLUGIN};PYTHONDONTWRITEBYTECODE=1"
+        )
+
+        add_test(
+          NAME dli_e2e_qwen2
+          COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/e2e/test_models.py --model qwen2
+        )
+        set_tests_properties(dli_e2e_qwen2 PROPERTIES
+          ENVIRONMENT "PYTHONPATH=${DLI_PYTHON_NATIVE_PATH};DLI_AOT_PLUGIN=${DLI_AOT_PLUGIN};PYTHONDONTWRITEBYTECODE=1"
+        )
+      endif()
     endif()
   endif()
 endif()

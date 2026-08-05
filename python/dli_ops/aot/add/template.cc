@@ -9,7 +9,8 @@ class AddOp final : public dli::Operator {
     *outputs[0] = dli::Tensor::cuda(dli::DType::Float32, inputs[0]->shape(), inputs[0]->deviceId());
     int total = static_cast<int>(inputs[0]->numel()); int width = static_cast<int>(inputs[1]->numel());
     void* a = ptr(*inputs[0]); void* b = ptr(*inputs[1]); void* out = ptr(*outputs[0]);
-    void* args[] = {&a, &b, &out, &total, &width};
+    void* triton_scratch = nullptr;
+    void* args[] = {&a, &b, &out, &total, &width, &triton_scratch};
     add_{{HASH_add}}_kernel().launch(args, ceilDiv(total, 256), 1, 1, 4 * 32);
   }
 };

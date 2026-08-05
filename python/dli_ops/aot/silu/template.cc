@@ -9,7 +9,8 @@ class SiluOp final : public dli::Operator {
     *outputs[0] = dli::Tensor::cuda(dli::DType::Float32, inputs[0]->shape(), inputs[0]->deviceId());
     int total = static_cast<int>(inputs[0]->numel());
     void* x = ptr(*inputs[0]); void* out = ptr(*outputs[0]);
-    void* args[] = {&x, &out, &total};
+    void* triton_scratch = nullptr;
+    void* args[] = {&x, &out, &total, &triton_scratch};
     silu_{{HASH_silu}}_kernel().launch(args, ceilDiv(total, 256), 1, 1, 4 * 32);
   }
 };

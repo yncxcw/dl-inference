@@ -21,7 +21,8 @@ class RmsNormOp final : public dli::Operator {
     const float eps = static_cast<float>(attrDouble(attrs, "eps", 1e-6));
     *outputs[0] = dli::Tensor::cuda(inputs[0]->dtype(), inputs[0]->shape(), inputs[0]->deviceId());
     void* x = ptr(*inputs[0]); void* w = ptr(*inputs[1]); void* out = ptr(*outputs[0]);
-    void* args[] = {&x, &w, &out, const_cast<int*>(&rows), const_cast<float*>(&eps)};
+    void* triton_scratch = nullptr;
+    void* args[] = {&x, &w, &out, const_cast<int*>(&rows), const_cast<float*>(&eps), &triton_scratch};
     rmsNormKernel(inputs[0]->shape().back()).launch(args, rows, 1, 1, 4 * 32);
   }
 };

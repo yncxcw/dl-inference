@@ -30,7 +30,8 @@ class SoftmaxOp final : public dli::Operator {
     const auto block = nextPowerOf2(width);
     *outputs[0] = dli::Tensor::cuda(dli::DType::Float32, inputs[0]->shape(), inputs[0]->deviceId());
     void* x = ptr(*inputs[0]); void* out = ptr(*outputs[0]);
-    void* args[] = {&x, &out, const_cast<int*>(&rows), const_cast<int*>(&width)};
+    void* triton_scratch = nullptr;
+    void* args[] = {&x, &out, const_cast<int*>(&rows), const_cast<int*>(&width), &triton_scratch};
     softmaxKernel(block).launch(args, rows, 1, 1, 4 * 32);
   }
 };

@@ -17,9 +17,10 @@ class MaxPool2dOp final : public dli::Operator {
     *outputs[0] = dli::Tensor::cuda(dli::DType::Float32, {n, c, out_h, out_w}, inputs[0]->deviceId());
     void* x = ptr(*inputs[0]); void* out = ptr(*outputs[0]);
     int sh = stride[0], sw = stride[1], ph = pad[0], pw = pad[1];
+    void* triton_scratch = nullptr;
     void* args[] = {&x, &out, const_cast<int*>(&total), const_cast<int*>(&n), const_cast<int*>(&c),
                     const_cast<int*>(&h), const_cast<int*>(&w), const_cast<int*>(&out_h),
-                    const_cast<int*>(&out_w), &sh, &sw, &ph, &pw};
+                    const_cast<int*>(&out_w), &sh, &sw, &ph, &pw, &triton_scratch};
     dli::CudaAotKernel* kernel = nullptr;
     if (kh == 2 && kw == 2) kernel = &maxpool_k2x2_{{HASH_maxpool_k2x2}}_kernel();
     if (kh == 3 && kw == 3) kernel = &maxpool_k3x3_{{HASH_maxpool_k3x3}}_kernel();

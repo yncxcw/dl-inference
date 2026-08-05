@@ -263,6 +263,22 @@ def compile_shared(source: Path, output: Path, include_dir: Path, core_library_d
     subprocess.run(cmd, check=True)
 
 
+def detect_arch(explicit_arch: int | None) -> int:
+    if explicit_arch is not None:
+        return explicit_arch
+    if "DLI_AOT_ARCH" in os.environ:
+        return int(os.environ["DLI_AOT_ARCH"])
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            major, minor = torch.cuda.get_device_capability(0)
+            return major * 10 + minor
+    except Exception:
+        pass
+    return 80
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--list", action="store_true")
@@ -272,7 +288,7 @@ def main() -> int:
     parser.add_argument("--library-name", default="dli_triton_aot_ops")
     parser.add_argument("--kernel-source", type=Path, default=Path("python/dli_ops/aot"))
     parser.add_argument("--extra-include-dir", type=Path, action="append", default=[])
-    parser.add_argument("--arch", type=int, default=int(os.environ.get("DLI_AOT_ARCH", "80")))
+    parser.add_argument("--arch", type=int)
     args = parser.parse_args()
 
     specs = default_specs()
@@ -286,7 +302,9 @@ def main() -> int:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     modules = {name: load_kernel_module(args.kernel_source / name) for name in OPERATOR_NAMES}
-    compiled = [compile_spec(modules, spec, args.arch) for spec in specs]
+    arch = detect_arch(args.arch)
+    print(f"building Triton AOT operators for sm{arch}")
+    compiled = [compile_spec(modules, spec, arch) for spec in specs]
     source = args.output_dir / f"{args.library_name}.cc"
     source.write_text(emit_plugin(compiled, args.kernel_source, OPERATOR_NAMES), encoding="utf-8")
     output = args.output_dir / f"lib{args.library_name}.so"

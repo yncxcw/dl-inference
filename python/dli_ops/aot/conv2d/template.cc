@@ -16,9 +16,10 @@ class Conv2dOp final : public dli::Operator {
     *outputs[0] = dli::Tensor::cuda(dli::DType::Float32, {n, out_c, out_h, out_w}, inputs[0]->deviceId());
     void* x = ptr(*inputs[0]); void* weight = ptr(*inputs[1]); void* bias = has_bias ? ptr(*inputs[2]) : ptr(*outputs[0]); void* out = ptr(*outputs[0]);
     int sh = stride[0], sw = stride[1], ph = pad[0], pw = pad[1];
+    void* triton_scratch = nullptr;
     void* args[] = {&x, &weight, &bias, &out, const_cast<int*>(&total), const_cast<int*>(&n), const_cast<int*>(&h),
                     const_cast<int*>(&w), const_cast<int*>(&out_c), const_cast<int*>(&out_h), const_cast<int*>(&out_w),
-                    &sh, &sw, &ph, &pw};
+                    &sh, &sw, &ph, &pw, &triton_scratch};
     dli::CudaAotKernel* kernel = nullptr;
     if (in_c == 1 && kh == 2 && kw == 2 && !has_bias) kernel = &conv_c1_k2x2_b0_{{HASH_conv_c1_k2x2_b0}}_kernel();
     if (in_c == 1 && kh == 2 && kw == 2 && has_bias) kernel = &conv_c1_k2x2_b1_{{HASH_conv_c1_k2x2_b1}}_kernel();

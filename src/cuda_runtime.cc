@@ -53,8 +53,8 @@ struct Runtime {
 };
 
 Runtime& runtime() {
-  static Runtime instance;
-  return instance;
+  static auto* instance = new Runtime;
+  return *instance;
 }
 
 void requireCuda(CudaError error, const char* operation) {

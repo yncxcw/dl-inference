@@ -69,7 +69,6 @@ def _export_fx(model: torch.nn.Module, example_inputs: tuple[torch.Tensor, ...],
         return weights.add(name, tensor)
 
     for fx_node in traced.graph.nodes:
-        print(fx_node)
         if fx_node.op == "placeholder":
             env[fx_node] = fx_node.name
             graph_inputs.append(fx_node.name)

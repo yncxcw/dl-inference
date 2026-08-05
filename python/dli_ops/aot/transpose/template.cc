@@ -13,7 +13,8 @@ class TransposeOp final : public dli::Operator {
     int rows = static_cast<int>(inputs[0]->dim(0)); int cols = static_cast<int>(inputs[0]->dim(1));
     *outputs[0] = dli::Tensor::cuda(dli::DType::Float32, {cols, rows}, inputs[0]->deviceId());
     void* x = ptr(*inputs[0]); void* out = ptr(*outputs[0]);
-    void* args[] = {&x, &out, &rows, &cols};
+    void* triton_scratch = nullptr;
+    void* args[] = {&x, &out, &rows, &cols, &triton_scratch};
     transpose2d_{{HASH_transpose2d}}_kernel().launch(args, ceilDiv(rows, 16), ceilDiv(cols, 16), 1, 4 * 32);
   }
 };

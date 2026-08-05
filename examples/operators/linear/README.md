@@ -1,10 +1,17 @@
 # Linear Operator Example
 
-This example runs a single `linear` node through the C++ engine and AOT Triton
-operator plugin.
+This example exports a one-layer PyTorch `nn.Linear` model at runtime, then
+launches the exported graph through the Python binding for the C++ engine and
+the AOT Triton operator plugin.
 
 ```bash
 cmake -S . -B build -DDLI_ENABLE_TRITON_AOT=ON
 cmake --build build -j
-./build/dli_operator_linear
+python3 examples/operators/linear/main.py
+```
+
+Generate only the graph and weights:
+
+```bash
+python3 examples/operators/linear/main.py --export-only
 ```

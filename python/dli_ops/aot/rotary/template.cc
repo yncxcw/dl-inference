@@ -15,7 +15,8 @@ class RotaryOp final : public dli::Operator {
     int start_pos = static_cast<int>(attrs.value_or<std::int64_t>("start_pos", 0));
     void* q = ptr(*inputs[0]); void* k = ptr(*inputs[1]); void* cos = ptr(*inputs[2]); void* sin = ptr(*inputs[3]);
     void* out_q = ptr(*outputs[0]); void* out_k = ptr(*outputs[1]);
-    void* args[] = {&q, &k, &cos, &sin, &out_q, &out_k, const_cast<int*>(&total_pairs), &start_pos};
+    void* triton_scratch = nullptr;
+    void* args[] = {&q, &k, &cos, &sin, &out_q, &out_k, const_cast<int*>(&total_pairs), &start_pos, &triton_scratch};
     dli::CudaAotKernel* kernel = nullptr;
     if (head_dim == 2 && seq == 1 && pairs == 1) kernel = &rotary_d2_s1_p1_{{HASH_rotary_d2_s1_p1}}_kernel();
     if (head_dim == 2 && seq == 2 && pairs == 1) kernel = &rotary_d2_s2_p1_{{HASH_rotary_d2_s2_p1}}_kernel();

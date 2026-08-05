@@ -17,10 +17,26 @@ bindings are available for launching the same C++ engine from Python.
 - A generic Triton AOT operator plugin for `dli.graph.v1` graphs.
 - One folder per AOT operator under `python/dli_ops/aot/<operator>/`, each with
   `kernel.py` and `template.cc`.
-- Runnable examples: `dli_operator_linear`, `dli_alexnet`, and `dli_qwen2`.
+- Runnable Python examples for a linear layer, AlexNet-style CNN, and Qwen2.
 - Optional gRPC client/server build hooks.
 
 ## Build
+
+The default full build path is:
+
+```bash
+./build.sh
+```
+
+`build.sh` configures and builds the full local development configuration:
+
+- `DLI_BUILD_TESTS=ON`
+- `DLI_BUILD_EXAMPLES=ON`
+- `DLI_ENABLE_TRITON_AOT=ON`
+- `DLI_ENABLE_GRPC=OFF`
+- `DLI_BUILD_PYTHON_BINDINGS=ON`
+
+The equivalent manual commands are:
 
 ```bash
 cmake -S . -B build \
@@ -32,11 +48,21 @@ cmake -S . -B build \
 cmake --build build -j
 ```
 
-The default AOT target is `sm80`. Override it with:
+The AOT target auto-detects the first visible CUDA device through PyTorch and
+falls back to `sm80` when no GPU is visible at build time. Override it with:
 
 ```bash
 DLI_AOT_ARCH=90 cmake --build build -j
 ```
+
+The script accepts the same knobs through environment variables:
+
+```bash
+DLI_BUILD_DIR=build-sm90 DLI_AOT_ARCH=90 DLI_BUILD_JOBS=8 ./build.sh
+DLI_ENABLE_GRPC=ON ./build.sh
+```
+
+`DLI_ENABLE_GRPC=ON` requires local Protobuf and gRPC C++ development packages.
 
 The tensor backend is PyTorch/ATen. CMake locates the installed PyTorch C++
 package through:
@@ -45,21 +71,23 @@ package through:
 python3 -c "import torch; print(torch.utils.cmake_prefix_path)"
 ```
 
-## Run
+## Run Examples
 
 ```bash
-./build/dli_operator_linear
-./build/dli_alexnet
-./build/dli_qwen2
+python3 examples/operators/linear/main.py
+python3 examples/alexnet/main.py
+python3 examples/qwen2/main.py
 ```
 
-Each executable loads:
+Each example exports its model to `build/examples/<name>` at runtime, loads:
 
 ```text
 build/operators/libdli_triton_aot_ops.so
 ```
 
-and needs a visible NVIDIA GPU compatible with the AOT architecture.
+through the Python engine binding, and needs a visible NVIDIA GPU compatible
+with the AOT architecture. Use `--export-only` to generate the graph and weights
+without launching GPU inference.
 
 ## Python Binding
 
@@ -194,6 +222,22 @@ static dli::CudaAotKernel& linear_k4_b1_ab12cd34_kernel() {
 `CudaAotKernel` lazily calls `cuModuleLoadData` on that byte array and
 `cuModuleGetFunction("linear_kernel")` before launch.
 
+Triton's compiled CUDA entry point includes a trailing global scratch pointer
+parameter in the PTX signature. The framework rejects kernels that require
+non-zero global scratch bytes today, but the launch ABI still needs the pointer
+slot. Each AOT template appends a null argument:
+
+```cpp
+void* triton_scratch = nullptr;
+void* args[] = {
+    &x, &weight, &bias, &out, &m, &n, &triton_scratch,
+};
+```
+
+Without this final `&triton_scratch` entry, `cuLaunchKernel` receives fewer
+argument pointers than the cubin metadata declares and can segfault inside the
+CUDA driver.
+
 The generated plugin exports:
 
 ```cpp
@@ -224,10 +268,50 @@ embedded cubin.
 
 ## Tests
 
+Run the full build plus test E2E path:
+
+```bash
+./test.sh
+```
+
+`test.sh` runs `./build.sh` first, then executes the full CTest suite from the
+configured build directory. To test an already-built tree:
+
+```bash
+DLI_SKIP_BUILD=1 ./test.sh
+```
+
+List all registered tests:
+
+```bash
+ctest --test-dir build -N
+```
+
+Run all tests directly:
+
 ```bash
 ctest --test-dir build --output-on-failure
 ```
 
-The numeric operator test builds one-node graphs for each AOT operator, runs
-them through the C++ engine and plugin, then compares copied-back outputs
-against PyTorch. It skips cleanly when `torch.cuda.is_available()` is false.
+Run a subset by CTest name:
+
+```bash
+./test.sh -R dli_test_engine
+./test.sh -R 'dli_aot_.*_numerics'
+./test.sh -R 'dli_e2e_(alexnet|qwen2)'
+```
+
+The default suite covers:
+
+- C++ unit tests, one target per runtime class/module: `dli_test_*`.
+- Python module tests: `dli_py_*`.
+- Triton AOT module/spec tests: `dli_py_aot_*` and
+  `dli_triton_aot_operator_specs`.
+- Per-operator numeric tests: `dli_aot_<operator>_numerics`. Each one builds a
+  one-node graph, runs it through the C++ engine and AOT plugin, then compares
+  copied-back output against PyTorch.
+- Runtime linkage guard: `dli_no_python_runtime_link`.
+- Model E2E tests: `dli_e2e_alexnet` and `dli_e2e_qwen2`.
+
+GPU-backed tests skip cleanly when `torch.cuda.is_available()` is false. The
+gRPC tests are registered only when configured with `DLI_ENABLE_GRPC=ON`.

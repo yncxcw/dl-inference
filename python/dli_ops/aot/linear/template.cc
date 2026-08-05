@@ -27,7 +27,8 @@ class LinearOp final : public dli::Operator {
     void* x = ptr(*inputs[0]); void* w = ptr(*inputs[1]);
     void* bias = has_bias ? ptr(*inputs[2]) : ptr(*outputs[0]);
     void* out = ptr(*outputs[0]);
-    void* args[] = {&x, &w, &bias, &out, const_cast<int*>(&m), const_cast<int*>(&n)};
+    void* triton_scratch = nullptr;
+    void* args[] = {&x, &w, &bias, &out, const_cast<int*>(&m), const_cast<int*>(&n), &triton_scratch};
     linearKernel(inputs[1]->dim(1), has_bias).launch(args, ceilDiv(m, 16), ceilDiv(n, 16), 1, 4 * 32);
   }
 };

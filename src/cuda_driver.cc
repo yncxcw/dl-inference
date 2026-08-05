@@ -68,8 +68,8 @@ struct Driver {
 };
 
 Driver& driver() {
-  static Driver instance;
-  return instance;
+  static auto* instance = new Driver;
+  return *instance;
 }
 
 std::string errorString(CUresult result) {
@@ -103,11 +103,7 @@ CudaAotKernel::CudaAotKernel(const char* kernel_name, const unsigned char* cubin
       cubin_size_(cubin_size),
       shared_memory_bytes_(shared_memory_bytes) {}
 
-CudaAotKernel::~CudaAotKernel() {
-  if (module_ != nullptr && cudaDriverAvailable()) {
-    driver().module_unload(static_cast<CUmodule>(module_));
-  }
-}
+CudaAotKernel::~CudaAotKernel() = default;
 
 void CudaAotKernel::load() {
   if (function_ != nullptr) return;
