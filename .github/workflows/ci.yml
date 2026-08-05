@@ -35,8 +35,8 @@ jobs:
           python -m pip install \
             --index-url https://download.pytorch.org/whl/cpu \
             torch==2.8.0
-          python -m pip install triton==3.4.0
-          python -c "import sys, torch, triton; print(sys.version); print('torch', torch.__version__); print('triton', triton.__version__)"
+          python -m pip install numpy==2.2.6 triton==3.4.0
+          python -c "import sys, numpy, torch, triton; print(sys.version); print('numpy', numpy.__version__); print('torch', torch.__version__); print('triton', triton.__version__)"
 
       - name: Configure
         run: |
