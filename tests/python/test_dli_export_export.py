@@ -21,6 +21,15 @@ class LinearModel(torch.nn.Module):
         return self.linear(x)
 
 
+class BatchNorm2dModel(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.norm = torch.nn.BatchNorm2d(3, eps=1e-4)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.norm(x)
+
+
 def test_private_parsers() -> None:
     assert export_impl._parse_shape("1,3,32,32") == (1, 3, 32, 32)
     assert export_impl._parse_model_kwargs(["local_files_only=true", "hidden=4", "name=qwen2"]) == {
@@ -45,6 +54,24 @@ def test_export_linear_fx_graph() -> None:
         manifest = json.loads(Path(weights_path).read_text(encoding="utf-8"))
         assert manifest["tensors"]["linear.weight"]["shape"] == [3, 4]
         assert manifest["tensors"]["linear.bias"]["shape"] == [3]
+
+
+def test_export_batch_norm2d_fx_graph() -> None:
+    model = BatchNorm2dModel().eval()
+    with tempfile.TemporaryDirectory() as tmp:
+        graph_path, weights_path = export_module(
+            model, (torch.zeros(2, 3, 4, 5),), tmp, model_type="batch_norm2d_test", stem="batch_norm2d"
+        )
+        graph = json.loads(Path(graph_path).read_text(encoding="utf-8"))
+        node = graph["nodes"][0]
+        assert node["op"] == "batch_norm2d"
+        assert node["inputs"] == [
+            "x", "norm.weight", "norm.bias", "norm.running_mean", "norm.running_var"
+        ]
+        assert node["attrs"] == {"eps": 1e-4}
+        manifest = json.loads(Path(weights_path).read_text(encoding="utf-8"))
+        assert manifest["tensors"]["norm.running_mean"]["shape"] == [3]
+        assert manifest["tensors"]["norm.running_var"]["shape"] == [3]
 
 
 def test_export_alexnet_fx_graph() -> None:
@@ -100,6 +127,6 @@ def test_export_qwen2_graph() -> None:
 if __name__ == "__main__":
     test_private_parsers()
     test_export_linear_fx_graph()
+    test_export_batch_norm2d_fx_graph()
     test_export_alexnet_fx_graph()
     test_export_qwen2_graph()
-

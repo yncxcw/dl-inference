@@ -16,6 +16,7 @@ from triton.backends.compiler import GPUTarget
 
 
 OPERATOR_NAMES = (
+    "batch_norm2d",
     "embedding",
     "rms_norm",
     "linear",
@@ -115,6 +116,9 @@ def compile_spec(modules: dict[str, object], spec: AotSpec, arch: int) -> Compil
 
 def default_specs() -> list[AotSpec]:
     specs: list[AotSpec] = []
+    specs.append(AotSpec("batch_norm2d", "batch_norm2d", "batch_norm2d_kernel",
+                         ("*fp32", "*fp32", "*fp32", "*fp32", "*fp32", "*fp32",
+                          "i32", "i32", "i32", "fp32", "256")))
     for hidden in (2, 4, 8, 128, 4096):
         block_d = max(16, 1 << (hidden - 1).bit_length())
         specs.append(AotSpec(f"embedding_h{hidden}", "embedding", "embedding_kernel",
