@@ -102,6 +102,7 @@ endif()
 set(DLI_AOT_OPERATOR_NAMES
   attention
   add
+  batch_norm2d
   conv2d
   embedding
   linear
@@ -276,6 +277,7 @@ if(DLI_BUILD_TESTS)
     dli_add_python_module_test(dli_py_dli_ops_aot_init tests/python/test_dli_ops_aot_init.py)
     dli_add_python_module_test(dli_py_aot_add_kernel tests/python/aot/test_add_kernel.py)
     dli_add_python_module_test(dli_py_aot_attention_kernel tests/python/aot/test_attention_kernel.py)
+    dli_add_python_module_test(dli_py_aot_batch_norm2d_kernel tests/python/aot/test_batch_norm2d_kernel.py)
     dli_add_python_module_test(dli_py_aot_conv2d_kernel tests/python/aot/test_conv2d_kernel.py)
     dli_add_python_module_test(dli_py_aot_embedding_kernel tests/python/aot/test_embedding_kernel.py)
     dli_add_python_module_test(dli_py_aot_linear_kernel tests/python/aot/test_linear_kernel.py)
@@ -313,6 +315,7 @@ if(DLI_BUILD_TESTS)
 
       dli_add_aot_operator_numeric_test(dli_aot_add_numerics tests/operators/test_add.py)
       dli_add_aot_operator_numeric_test(dli_aot_attention_numerics tests/operators/test_attention.py)
+      dli_add_aot_operator_numeric_test(dli_aot_batch_norm2d_numerics tests/operators/test_batch_norm2d.py)
       dli_add_aot_operator_numeric_test(dli_aot_conv2d_numerics tests/operators/test_conv2d.py)
       dli_add_aot_operator_numeric_test(dli_aot_embedding_numerics tests/operators/test_embedding.py)
       dli_add_aot_operator_numeric_test(dli_aot_linear_numerics tests/operators/test_linear.py)
