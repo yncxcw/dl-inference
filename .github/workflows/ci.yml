@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test (Python 3.11)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            --index-url https://download.pytorch.org/whl/cpu \
+            torch==2.8.0
+          python -m pip install triton==3.4.0
+          python -c "import sys, torch, triton; print(sys.version); print('torch', torch.__version__); print('triton', triton.__version__)"
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-ci \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDLI_BUILD_TESTS=ON \
+            -DDLI_BUILD_EXAMPLES=ON \
+            -DDLI_ENABLE_TRITON_AOT=OFF \
+            -DDLI_ENABLE_GRPC=OFF \
+            -DDLI_BUILD_PYTHON_BINDINGS=ON
+
+      - name: Build
+        run: cmake --build build-ci --parallel 2
+
+      - name: Test
+        run: ctest --test-dir build-ci --output-on-failure
