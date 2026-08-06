@@ -1,10 +1,9 @@
-#include "test_support.h"
-
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "dli/logging.h"
+#include "test_support.h"
 
 int main() {
   return dli_test::run("LogMessage", [] {
@@ -15,15 +14,20 @@ int main() {
       std::string message;
     };
     std::vector<Record> records;
-    dli::setLogSink([&](dli::LogSeverity severity, std::string_view, int, std::string_view message) {
-      records.push_back({severity, std::string(message)});
-    });
+    dli::setLogSink(
+        [&](dli::LogSeverity severity, std::string_view, int, std::string_view message) {
+          records.push_back({severity, std::string(message)});
+        });
     const auto previous_level = dli::logLevel();
     dli::setLogLevel(dli::LogSeverity::Debug);
-    LOG_DEBUG << "hello " << "debug";
-    LOG_INFO << "hello " << "info";
-    LOG_WARN << "hello " << "warn";
-    LOG_ERROR << "hello " << "error";
+    LOG_DEBUG << "hello "
+              << "debug";
+    LOG_INFO << "hello "
+             << "info";
+    LOG_WARN << "hello "
+             << "warn";
+    LOG_ERROR << "hello "
+              << "error";
     dli::setLogLevel(previous_level);
     dli::resetLogSink();
 
@@ -34,9 +38,10 @@ int main() {
     dli_test::expect(records[3].message == "hello error", "error message");
 
     records.clear();
-    dli::setLogSink([&](dli::LogSeverity severity, std::string_view, int, std::string_view message) {
-      records.push_back({severity, std::string(message)});
-    });
+    dli::setLogSink(
+        [&](dli::LogSeverity severity, std::string_view, int, std::string_view message) {
+          records.push_back({severity, std::string(message)});
+        });
     dli::setLogLevel(dli::LogSeverity::Warn);
     LOG_DEBUG << "debug";
     LOG_INFO << "info";
@@ -52,4 +57,3 @@ int main() {
     dli_test::expect(records[1].message == "error", "error threshold message");
   });
 }
-

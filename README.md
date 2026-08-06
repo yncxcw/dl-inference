@@ -86,6 +86,19 @@ Test execution, AOT plugin compilation, operator numerics, and model end-to-end
 tests will be enabled after a self-hosted or GitHub larger GPU runner is
 available.
 
+## Formatting
+
+Format all tracked Python and C++ source files before submitting changes:
+
+```bash
+./format
+```
+
+The script requires Black 24.10.0 and clang-format 18. CI runs the equivalent
+non-mutating check with `./format --check`. AOT `template.cc` files are excluded
+because their `{{HASH_*}}` substitution tokens are not valid C++ until the AOT
+generator renders them.
+
 ## Run Examples
 
 ```bash

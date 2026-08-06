@@ -10,4 +10,3 @@ def test_mul_kernel_signature() -> None:
 
 if __name__ == "__main__":
     test_mul_kernel_signature()
-

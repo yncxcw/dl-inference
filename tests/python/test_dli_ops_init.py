@@ -10,4 +10,3 @@ def test_operator_spec_is_reexported() -> None:
 
 if __name__ == "__main__":
     test_operator_spec_is_reexported()
-

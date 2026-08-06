@@ -49,7 +49,8 @@ std::vector<at::Tensor> tensorsFromIValue(const c10::IValue& value) {
   if (value.isTuple()) {
     std::vector<at::Tensor> tensors;
     for (const auto& item : value.toTupleRef().elements()) {
-      if (!item.isTensor()) throw std::invalid_argument("aten tuple output contains non-tensor value");
+      if (!item.isTensor())
+        throw std::invalid_argument("aten tuple output contains non-tensor value");
       tensors.push_back(item.toTensor());
     }
     return tensors;
@@ -61,10 +62,8 @@ class AtenOperator final : public Operator {
  public:
   std::string type() const override { return "aten"; }
 
-  void compute(const std::vector<const Tensor*>& inputs,
-               const std::vector<Tensor*>& outputs,
-               const Attributes& attrs,
-               ExecutionContext&) const override {
+  void compute(const std::vector<const Tensor*>& inputs, const std::vector<Tensor*>& outputs,
+               const Attributes& attrs, ExecutionContext&) const override {
     // The graph stores the ATen operator name and optional overload separately,
     // for example name="aten::add" and overload="Tensor".
     const auto name = attrs.require<std::string>("name");
@@ -100,7 +99,8 @@ class AtenOperator final : public Operator {
       throw std::invalid_argument("aten operator output count mismatch");
     }
     for (std::size_t i = 0; i < returned.size(); ++i) {
-      if (outputs[i] == nullptr) throw std::invalid_argument("aten operator received null output tensor");
+      if (outputs[i] == nullptr)
+        throw std::invalid_argument("aten operator received null output tensor");
       *outputs[i] = Tensor(std::move(returned[i]));
     }
   }

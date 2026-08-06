@@ -1,8 +1,8 @@
-#include "dli/operator.h"
-
 #include <dlfcn.h>
 
 #include <stdexcept>
+
+#include "dli/operator.h"
 
 namespace dli {
 

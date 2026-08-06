@@ -21,7 +21,9 @@ def _plugin() -> Path:
     return path
 
 
-def _run_graph(graph_path: Path, weights_path: Path, inputs: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+def _run_graph(
+    graph_path: Path, weights_path: Path, inputs: dict[str, torch.Tensor]
+) -> dict[str, torch.Tensor]:
     engine = dli.Engine()
     engine.load_library(str(_plugin()))
     graph_inputs = dli.load_weights(str(weights_path), "cuda")
@@ -31,7 +33,9 @@ def _run_graph(graph_path: Path, weights_path: Path, inputs: dict[str, torch.Ten
     return outputs
 
 
-def _assert_close(actual: torch.Tensor, expected: torch.Tensor, *, rtol: float = 1e-3, atol: float = 1e-3) -> None:
+def _assert_close(
+    actual: torch.Tensor, expected: torch.Tensor, *, rtol: float = 1e-3, atol: float = 1e-3
+) -> None:
     torch.testing.assert_close(actual.detach().cpu(), expected.detach().cpu(), rtol=rtol, atol=atol)
 
 
@@ -84,4 +88,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

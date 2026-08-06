@@ -3,8 +3,7 @@ import triton.language as tl
 
 
 @triton.jit
-def rms_norm_kernel(x, weight, out, rows, eps,
-                    hidden: tl.constexpr, BLOCK_D: tl.constexpr):
+def rms_norm_kernel(x, weight, out, rows, eps, hidden: tl.constexpr, BLOCK_D: tl.constexpr):
     row = tl.program_id(0)
     offs = tl.arange(0, BLOCK_D)
     mask = offs < hidden

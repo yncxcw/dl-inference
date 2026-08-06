@@ -1,7 +1,5 @@
 #include "dli/weights.h"
 
-#include "dli/cuda_runtime.h"
-
 #include <ATen/ATen.h>
 
 #include <cctype>
@@ -14,6 +12,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+
+#include "dli/cuda_runtime.h"
 
 namespace dli {
 namespace {
@@ -108,10 +108,14 @@ class JsonParser {
       }
       if (pos_ >= text_.size()) throw std::invalid_argument("unterminated JSON escape");
       const char escaped = text_[pos_++];
-      if (escaped == '"' || escaped == '\\' || escaped == '/') result.push_back(escaped);
-      else if (escaped == 'n') result.push_back('\n');
-      else if (escaped == 't') result.push_back('\t');
-      else throw std::invalid_argument("unsupported JSON string escape");
+      if (escaped == '"' || escaped == '\\' || escaped == '/')
+        result.push_back(escaped);
+      else if (escaped == 'n')
+        result.push_back('\n');
+      else if (escaped == 't')
+        result.push_back('\t');
+      else
+        throw std::invalid_argument("unsupported JSON string escape");
     }
     throw std::invalid_argument("unterminated JSON string");
   }
@@ -169,7 +173,8 @@ class JsonParser {
     return false;
   }
   void expect(char expected) {
-    if (!consume(expected)) throw std::invalid_argument(std::string("expected JSON token: ") + expected);
+    if (!consume(expected))
+      throw std::invalid_argument(std::string("expected JSON token: ") + expected);
   }
   std::string_view text_;
   std::size_t pos_ = 0;
@@ -183,17 +188,20 @@ const JsonValue& requireField(const JsonValue& object, const std::string& name) 
 }
 
 std::string asString(const JsonValue& value, const std::string& field) {
-  if (value.type != JsonValue::Type::String) throw std::invalid_argument("JSON field must be string: " + field);
+  if (value.type != JsonValue::Type::String)
+    throw std::invalid_argument("JSON field must be string: " + field);
   return value.string_value;
 }
 
 std::int64_t asInt(const JsonValue& value, const std::string& field) {
-  if (value.type != JsonValue::Type::Int) throw std::invalid_argument("JSON field must be integer: " + field);
+  if (value.type != JsonValue::Type::Int)
+    throw std::invalid_argument("JSON field must be integer: " + field);
   return value.int_value;
 }
 
 std::vector<std::int64_t> asIntArray(const JsonValue& value, const std::string& field) {
-  if (value.type != JsonValue::Type::Array) throw std::invalid_argument("JSON field must be integer array: " + field);
+  if (value.type != JsonValue::Type::Array)
+    throw std::invalid_argument("JSON field must be integer array: " + field);
   std::vector<std::int64_t> result;
   for (const auto& item : value.array_value) result.push_back(asInt(item, field));
   return result;
@@ -210,15 +218,15 @@ std::string readTextFile(const std::filesystem::path& path) {
 std::vector<std::byte> readBytes(const std::filesystem::path& path) {
   std::ifstream file(path, std::ios::binary);
   if (!file) throw std::runtime_error("failed to open weights data: " + path.string());
-  const std::vector<char> chars{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+  const std::vector<char> chars{std::istreambuf_iterator<char>(file),
+                                std::istreambuf_iterator<char>()};
   std::vector<std::byte> bytes(chars.size());
   if (!chars.empty()) std::memcpy(bytes.data(), chars.data(), chars.size());
   return bytes;
 }
 
-Tensor tensorFromBytes(DType dtype, std::vector<std::int64_t> shape,
-                       const std::byte* data, std::size_t nbytes,
-                       DeviceType device, int device_id) {
+Tensor tensorFromBytes(DType dtype, std::vector<std::int64_t> shape, const std::byte* data,
+                       std::size_t nbytes, DeviceType device, int device_id) {
   auto host = at::empty(shape, at::TensorOptions().dtype(torchDType(dtype)).device(at::kCPU));
   const auto expected_nbytes = static_cast<std::size_t>(host.numel()) * byteSize(dtype);
   if (expected_nbytes != nbytes) {
@@ -234,18 +242,22 @@ Tensor tensorFromBytes(DType dtype, std::vector<std::int64_t> shape,
 TensorMap loadWeights(const std::string& manifest_path, DeviceType device, int device_id) {
   const std::filesystem::path manifest(manifest_path);
   const auto root = JsonParser(readTextFile(manifest)).parse();
-  if (root.type != JsonValue::Type::Object) throw std::invalid_argument("weights manifest root must be an object");
+  if (root.type != JsonValue::Type::Object)
+    throw std::invalid_argument("weights manifest root must be an object");
   const auto format = asString(requireField(root, "format"), "format");
-  if (format != "dli.weights.v1") throw std::invalid_argument("unsupported weights format: " + format);
+  if (format != "dli.weights.v1")
+    throw std::invalid_argument("unsupported weights format: " + format);
   auto data_path = std::filesystem::path(asString(requireField(root, "data"), "data"));
   if (data_path.is_relative()) data_path = manifest.parent_path() / data_path;
   const auto bytes = readBytes(data_path);
   const auto& tensors = requireField(root, "tensors");
-  if (tensors.type != JsonValue::Type::Object) throw std::invalid_argument("weights tensors must be an object");
+  if (tensors.type != JsonValue::Type::Object)
+    throw std::invalid_argument("weights tensors must be an object");
 
   TensorMap result;
   for (const auto& [name, metadata] : tensors.object_value) {
-    if (metadata.type != JsonValue::Type::Object) throw std::invalid_argument("weights tensor metadata must be an object: " + name);
+    if (metadata.type != JsonValue::Type::Object)
+      throw std::invalid_argument("weights tensor metadata must be an object: " + name);
     const auto dtype = dtypeFromString(asString(requireField(metadata, "dtype"), "dtype"));
     const auto shape = asIntArray(requireField(metadata, "shape"), "shape");
     const auto offset = static_cast<std::size_t>(asInt(requireField(metadata, "offset"), "offset"));
@@ -253,7 +265,8 @@ TensorMap loadWeights(const std::string& manifest_path, DeviceType device, int d
     if (offset > bytes.size() || nbytes > bytes.size() - offset) {
       throw std::invalid_argument("weights tensor range exceeds data file: " + name);
     }
-    result.emplace(name, tensorFromBytes(dtype, shape, bytes.data() + offset, nbytes, device, device_id));
+    result.emplace(name,
+                   tensorFromBytes(dtype, shape, bytes.data() + offset, nbytes, device, device_id));
   }
   return result;
 }

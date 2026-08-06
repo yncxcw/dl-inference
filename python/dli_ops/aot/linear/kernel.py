@@ -3,9 +3,19 @@ import triton.language as tl
 
 
 @triton.jit
-def linear_kernel(x, weight, bias, out, m, n,
-                  k: tl.constexpr, has_bias: tl.constexpr,
-                  BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):
+def linear_kernel(
+    x,
+    weight,
+    bias,
+    out,
+    m,
+    n,
+    k: tl.constexpr,
+    has_bias: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -14,15 +24,21 @@ def linear_kernel(x, weight, bias, out, m, n,
     acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
     for start in range(0, k, BLOCK_K):
         kk = start + offs_k
-        a = tl.load(x + offs_m[:, None] * k + kk[None, :],
-                    mask=(offs_m[:, None] < m) & (kk[None, :] < k),
-                    other=0.0)
-        b = tl.load(weight + offs_n[None, :] * k + kk[:, None],
-                    mask=(offs_n[None, :] < n) & (kk[:, None] < k),
-                    other=0.0)
+        a = tl.load(
+            x + offs_m[:, None] * k + kk[None, :],
+            mask=(offs_m[:, None] < m) & (kk[None, :] < k),
+            other=0.0,
+        )
+        b = tl.load(
+            weight + offs_n[None, :] * k + kk[:, None],
+            mask=(offs_n[None, :] < n) & (kk[:, None] < k),
+            other=0.0,
+        )
         acc += tl.dot(a, b)
     if has_bias:
         acc += tl.load(bias + offs_n, mask=offs_n < n, other=0.0)[None, :]
-    tl.store(out + offs_m[:, None] * n + offs_n[None, :],
-             acc,
-             mask=(offs_m[:, None] < m) & (offs_n[None, :] < n))
+    tl.store(
+        out + offs_m[:, None] * n + offs_n[None, :],
+        acc,
+        mask=(offs_m[:, None] < m) & (offs_n[None, :] < n),
+    )

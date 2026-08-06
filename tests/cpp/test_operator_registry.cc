@@ -1,10 +1,9 @@
-#include "test_support.h"
-
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "dli/operator.h"
+#include "test_support.h"
 
 namespace {
 
@@ -12,10 +11,10 @@ class IdentityOp final : public dli::Operator {
  public:
   std::string type() const override { return "identity_test"; }
   void compute(const std::vector<const dli::Tensor*>& inputs,
-               const std::vector<dli::Tensor*>& outputs,
-               const dli::Attributes&,
+               const std::vector<dli::Tensor*>& outputs, const dli::Attributes&,
                dli::ExecutionContext&) const override {
-    if (inputs.size() != 1 || outputs.size() != 1) throw std::invalid_argument("identity_test arity");
+    if (inputs.size() != 1 || outputs.size() != 1)
+      throw std::invalid_argument("identity_test arity");
     *outputs[0] = *inputs[0];
   }
 };
@@ -51,17 +50,17 @@ int main(int argc, char** argv) {
 
     if (!plugin_path.empty()) {
       const std::vector<std::string> operator_types = {
-          "embedding", "rms_norm", "linear", "matmul", "add", "mul", "relu", "silu",
-          "max_pool2d", "softmax", "reshape", "transpose", "conv2d", "attention",
-          "rotary_embedding"};
+          "embedding", "rms_norm",  "linear", "matmul",     "add",
+          "mul",       "relu",      "silu",   "max_pool2d", "softmax",
+          "reshape",   "transpose", "conv2d", "attention",  "rotary_embedding"};
       for (const auto& type : operator_types) {
         dli_test::expect(!registry.contains(type), "operator should require plugin: " + type);
       }
       registry.loadLibrary(plugin_path);
       for (const auto& type : operator_types) {
-        dli_test::expect(registry.contains(type), "Triton plugin did not register operator: " + type);
+        dli_test::expect(registry.contains(type),
+                         "Triton plugin did not register operator: " + type);
       }
     }
   });
 }
-

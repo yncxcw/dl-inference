@@ -8,4 +8,3 @@ def assert_kernel_args(kernel: object, names: Iterable[str]) -> None:
     assert arg_names is not None
     for name in names:
         assert name in arg_names
-

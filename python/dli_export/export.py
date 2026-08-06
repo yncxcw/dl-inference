@@ -51,8 +51,13 @@ def _shape_from_meta(node: torch.fx.Node) -> list[int]:
     return list(meta.shape)
 
 
-def _export_fx(model: torch.nn.Module, example_inputs: tuple[torch.Tensor, ...],
-               output_dir: Path, model_type: str, stem: str) -> tuple[Path, Path]:
+def _export_fx(
+    model: torch.nn.Module,
+    example_inputs: tuple[torch.Tensor, ...],
+    output_dir: Path,
+    model_type: str,
+    stem: str,
+) -> tuple[Path, Path]:
     if not example_inputs:
         raise ExportError("FX export requires at least one example input")
     traced = torch.fx.symbolic_trace(model.eval())
@@ -109,18 +114,44 @@ def _export_fx(model: torch.nn.Module, example_inputs: tuple[torch.Tensor, ...],
                 inputs = [x, w]
                 if module.bias is not None:
                     inputs.append(add_param(f"{fx_node.target}.bias", module.bias))
-                _node(nodes, fx_node.name, "conv2d", inputs, [out],
-                      {"stride": list(module.stride), "padding": list(module.padding)})
+                _node(
+                    nodes,
+                    fx_node.name,
+                    "conv2d",
+                    inputs,
+                    [out],
+                    {"stride": list(module.stride), "padding": list(module.padding)},
+                )
             elif isinstance(module, torch.nn.ReLU):
                 _node(nodes, fx_node.name, "relu", [x], [out])
             elif isinstance(module, torch.nn.MaxPool2d):
-                kernel = module.kernel_size if isinstance(module.kernel_size, tuple) else (module.kernel_size, module.kernel_size)
-                stride = module.stride if isinstance(module.stride, tuple) else (module.stride, module.stride)
-                padding = module.padding if isinstance(module.padding, tuple) else (module.padding, module.padding)
-                _node(nodes, fx_node.name, "max_pool2d", [x], [out],
-                      {"kernel_size": list(kernel), "stride": list(stride), "padding": list(padding)})
+                kernel = (
+                    module.kernel_size
+                    if isinstance(module.kernel_size, tuple)
+                    else (module.kernel_size, module.kernel_size)
+                )
+                stride = (
+                    module.stride
+                    if isinstance(module.stride, tuple)
+                    else (module.stride, module.stride)
+                )
+                padding = (
+                    module.padding
+                    if isinstance(module.padding, tuple)
+                    else (module.padding, module.padding)
+                )
+                _node(
+                    nodes,
+                    fx_node.name,
+                    "max_pool2d",
+                    [x],
+                    [out],
+                    {"kernel_size": list(kernel), "stride": list(stride), "padding": list(padding)},
+                )
             elif isinstance(module, torch.nn.Flatten):
-                _node(nodes, fx_node.name, "reshape", [x], [out], {"shape": _shape_from_meta(fx_node)})
+                _node(
+                    nodes, fx_node.name, "reshape", [x], [out], {"shape": _shape_from_meta(fx_node)}
+                )
             else:
                 raise ExportError(f"unsupported module: {fx_node.target} ({type(module).__name__})")
             env[fx_node] = out
@@ -130,10 +161,14 @@ def _export_fx(model: torch.nn.Module, example_inputs: tuple[torch.Tensor, ...],
             out = fx_node.name
             if target in ("reshape", "view") or target in (torch.reshape,):
                 x = env[fx_node.args[0]]
-                _node(nodes, fx_node.name, "reshape", [x], [out], {"shape": _shape_from_meta(fx_node)})
+                _node(
+                    nodes, fx_node.name, "reshape", [x], [out], {"shape": _shape_from_meta(fx_node)}
+                )
             elif target in (torch.flatten,):
                 x = env[fx_node.args[0]]
-                _node(nodes, fx_node.name, "reshape", [x], [out], {"shape": _shape_from_meta(fx_node)})
+                _node(
+                    nodes, fx_node.name, "reshape", [x], [out], {"shape": _shape_from_meta(fx_node)}
+                )
             else:
                 raise ExportError(f"unsupported FX call: {target}")
             env[fx_node] = out
@@ -161,10 +196,16 @@ def _export_fx(model: torch.nn.Module, example_inputs: tuple[torch.Tensor, ...],
 
 def _is_qwen2_causal_lm(model: torch.nn.Module) -> bool:
     config = getattr(model, "config", None)
-    return getattr(config, "model_type", None) == "qwen2" and hasattr(model, "model") and hasattr(model.model, "layers")
+    return (
+        getattr(config, "model_type", None) == "qwen2"
+        and hasattr(model, "model")
+        and hasattr(model.model, "layers")
+    )
 
 
-def _linear_inputs(weights: WeightWriter, prefix: str, module: torch.nn.Module, source: str) -> list[str]:
+def _linear_inputs(
+    weights: WeightWriter, prefix: str, module: torch.nn.Module, source: str
+) -> list[str]:
     inputs = [source, weights.add(f"{prefix}.weight", module.weight)]
     bias = getattr(module, "bias", None)
     if bias is not None:
@@ -194,14 +235,17 @@ def _qwen2_rotary_tables(config: Any) -> tuple[torch.Tensor, torch.Tensor]:
     return torch.cos(freqs).reshape(max_pos, pairs), torch.sin(freqs).reshape(max_pos, pairs)
 
 
-def _export_qwen2_causal_lm(model: torch.nn.Module, output_dir: Path,
-                            model_type: str, stem: str) -> tuple[Path, Path]:
+def _export_qwen2_causal_lm(
+    model: torch.nn.Module, output_dir: Path, model_type: str, stem: str
+) -> tuple[Path, Path]:
     config = model.config
     hidden = int(config.hidden_size)
     heads = int(config.num_attention_heads)
     kv_heads = int(config.num_key_value_heads)
     if kv_heads != heads:
-        raise ExportError("Qwen2 export currently requires num_key_value_heads == num_attention_heads")
+        raise ExportError(
+            "Qwen2 export currently requires num_key_value_heads == num_attention_heads"
+        )
     if hidden % heads != 0:
         raise ExportError("Qwen2 hidden_size must be divisible by num_attention_heads")
     head_dim = hidden // heads
@@ -214,78 +258,180 @@ def _export_qwen2_causal_lm(model: torch.nn.Module, output_dir: Path,
     weights.add("rotary_sin", sin)
 
     hidden_name = "hidden_states"
-    _node(nodes, "model.embed_tokens", "embedding", ["input_ids", "model.embed_tokens.weight"], [hidden_name])
+    _node(
+        nodes,
+        "model.embed_tokens",
+        "embedding",
+        ["input_ids", "model.embed_tokens.weight"],
+        [hidden_name],
+    )
 
     for layer_index, layer in enumerate(model.model.layers):
         prefix = f"model.layers.{layer_index}"
         residual = hidden_name
         norm = f"layers_{layer_index}_input_norm"
         weights.add(f"{prefix}.input_layernorm.weight", layer.input_layernorm.weight)
-        _node(nodes, f"{prefix}.input_layernorm", "rms_norm",
-              [hidden_name, f"{prefix}.input_layernorm.weight"], [norm],
-              {"eps": float(layer.input_layernorm.variance_epsilon)})
+        _node(
+            nodes,
+            f"{prefix}.input_layernorm",
+            "rms_norm",
+            [hidden_name, f"{prefix}.input_layernorm.weight"],
+            [norm],
+            {"eps": float(layer.input_layernorm.variance_epsilon)},
+        )
 
         q = f"layers_{layer_index}_q"
         k = f"layers_{layer_index}_k"
         v = f"layers_{layer_index}_v"
-        _node(nodes, f"{prefix}.self_attn.q_proj", "linear",
-              _linear_inputs(weights, f"{prefix}.self_attn.q_proj", layer.self_attn.q_proj, norm), [q])
-        _node(nodes, f"{prefix}.self_attn.k_proj", "linear",
-              _linear_inputs(weights, f"{prefix}.self_attn.k_proj", layer.self_attn.k_proj, norm), [k])
-        _node(nodes, f"{prefix}.self_attn.v_proj", "linear",
-              _linear_inputs(weights, f"{prefix}.self_attn.v_proj", layer.self_attn.v_proj, norm), [v])
+        _node(
+            nodes,
+            f"{prefix}.self_attn.q_proj",
+            "linear",
+            _linear_inputs(weights, f"{prefix}.self_attn.q_proj", layer.self_attn.q_proj, norm),
+            [q],
+        )
+        _node(
+            nodes,
+            f"{prefix}.self_attn.k_proj",
+            "linear",
+            _linear_inputs(weights, f"{prefix}.self_attn.k_proj", layer.self_attn.k_proj, norm),
+            [k],
+        )
+        _node(
+            nodes,
+            f"{prefix}.self_attn.v_proj",
+            "linear",
+            _linear_inputs(weights, f"{prefix}.self_attn.v_proj", layer.self_attn.v_proj, norm),
+            [v],
+        )
 
         q_heads = f"layers_{layer_index}_q_heads"
         k_heads = f"layers_{layer_index}_k_heads"
         v_heads = f"layers_{layer_index}_v_heads"
-        _node(nodes, f"{prefix}.self_attn.q_reshape", "reshape", [q], [q_heads], {"shape": [1, heads, 1, head_dim]})
-        _node(nodes, f"{prefix}.self_attn.k_reshape", "reshape", [k], [k_heads], {"shape": [1, heads, 1, head_dim]})
-        _node(nodes, f"{prefix}.self_attn.v_reshape", "reshape", [v], [v_heads], {"shape": [1, heads, 1, head_dim]})
+        _node(
+            nodes,
+            f"{prefix}.self_attn.q_reshape",
+            "reshape",
+            [q],
+            [q_heads],
+            {"shape": [1, heads, 1, head_dim]},
+        )
+        _node(
+            nodes,
+            f"{prefix}.self_attn.k_reshape",
+            "reshape",
+            [k],
+            [k_heads],
+            {"shape": [1, heads, 1, head_dim]},
+        )
+        _node(
+            nodes,
+            f"{prefix}.self_attn.v_reshape",
+            "reshape",
+            [v],
+            [v_heads],
+            {"shape": [1, heads, 1, head_dim]},
+        )
 
         q_rotary = f"layers_{layer_index}_q_rotary"
         k_rotary = f"layers_{layer_index}_k_rotary"
-        _node(nodes, f"{prefix}.self_attn.rotary_embedding", "rotary_embedding",
-              [q_heads, k_heads, "rotary_cos", "rotary_sin"], [q_rotary, k_rotary])
+        _node(
+            nodes,
+            f"{prefix}.self_attn.rotary_embedding",
+            "rotary_embedding",
+            [q_heads, k_heads, "rotary_cos", "rotary_sin"],
+            [q_rotary, k_rotary],
+        )
 
         attn_out = f"layers_{layer_index}_attention"
-        _node(nodes, f"{prefix}.self_attn.attention", "attention",
-              [q_rotary, k_rotary, v_heads], [attn_out],
-              {"causal": True, "kv_cache": f"layer_{layer_index}"})
+        _node(
+            nodes,
+            f"{prefix}.self_attn.attention",
+            "attention",
+            [q_rotary, k_rotary, v_heads],
+            [attn_out],
+            {"causal": True, "kv_cache": f"layer_{layer_index}"},
+        )
         merged = f"layers_{layer_index}_attention_merged"
-        _node(nodes, f"{prefix}.self_attn.merge", "reshape", [attn_out], [merged], {"shape": [1, hidden]})
+        _node(
+            nodes,
+            f"{prefix}.self_attn.merge",
+            "reshape",
+            [attn_out],
+            [merged],
+            {"shape": [1, hidden]},
+        )
         proj = f"layers_{layer_index}_attention_proj"
-        _node(nodes, f"{prefix}.self_attn.o_proj", "linear",
-              _linear_inputs(weights, f"{prefix}.self_attn.o_proj", layer.self_attn.o_proj, merged), [proj])
+        _node(
+            nodes,
+            f"{prefix}.self_attn.o_proj",
+            "linear",
+            _linear_inputs(weights, f"{prefix}.self_attn.o_proj", layer.self_attn.o_proj, merged),
+            [proj],
+        )
         after_attn = f"layers_{layer_index}_after_attention"
         _node(nodes, f"{prefix}.attention_residual", "add", [residual, proj], [after_attn])
 
         post_norm = f"layers_{layer_index}_post_attention_norm"
-        weights.add(f"{prefix}.post_attention_layernorm.weight", layer.post_attention_layernorm.weight)
-        _node(nodes, f"{prefix}.post_attention_layernorm", "rms_norm",
-              [after_attn, f"{prefix}.post_attention_layernorm.weight"], [post_norm],
-              {"eps": float(layer.post_attention_layernorm.variance_epsilon)})
+        weights.add(
+            f"{prefix}.post_attention_layernorm.weight", layer.post_attention_layernorm.weight
+        )
+        _node(
+            nodes,
+            f"{prefix}.post_attention_layernorm",
+            "rms_norm",
+            [after_attn, f"{prefix}.post_attention_layernorm.weight"],
+            [post_norm],
+            {"eps": float(layer.post_attention_layernorm.variance_epsilon)},
+        )
         gate = f"layers_{layer_index}_gate"
         up = f"layers_{layer_index}_up"
         silu = f"layers_{layer_index}_silu"
         gated = f"layers_{layer_index}_gated"
         down = f"layers_{layer_index}_mlp_down"
-        _node(nodes, f"{prefix}.mlp.gate_proj", "linear",
-              _linear_inputs(weights, f"{prefix}.mlp.gate_proj", layer.mlp.gate_proj, post_norm), [gate])
-        _node(nodes, f"{prefix}.mlp.up_proj", "linear",
-              _linear_inputs(weights, f"{prefix}.mlp.up_proj", layer.mlp.up_proj, post_norm), [up])
+        _node(
+            nodes,
+            f"{prefix}.mlp.gate_proj",
+            "linear",
+            _linear_inputs(weights, f"{prefix}.mlp.gate_proj", layer.mlp.gate_proj, post_norm),
+            [gate],
+        )
+        _node(
+            nodes,
+            f"{prefix}.mlp.up_proj",
+            "linear",
+            _linear_inputs(weights, f"{prefix}.mlp.up_proj", layer.mlp.up_proj, post_norm),
+            [up],
+        )
         _node(nodes, f"{prefix}.mlp.act_fn", "silu", [gate], [silu])
         _node(nodes, f"{prefix}.mlp.mul", "mul", [silu, up], [gated])
-        _node(nodes, f"{prefix}.mlp.down_proj", "linear",
-              _linear_inputs(weights, f"{prefix}.mlp.down_proj", layer.mlp.down_proj, gated), [down])
+        _node(
+            nodes,
+            f"{prefix}.mlp.down_proj",
+            "linear",
+            _linear_inputs(weights, f"{prefix}.mlp.down_proj", layer.mlp.down_proj, gated),
+            [down],
+        )
         hidden_name = f"layers_{layer_index}_output"
         _node(nodes, f"{prefix}.mlp_residual", "add", [after_attn, down], [hidden_name])
 
     weights.add("model.norm.weight", model.model.norm.weight)
     norm_out = "norm_hidden"
-    _node(nodes, "model.norm", "rms_norm", [hidden_name, "model.norm.weight"], [norm_out],
-          {"eps": float(model.model.norm.variance_epsilon)})
-    _node(nodes, "lm_head", "linear",
-          _linear_inputs(weights, "lm_head", model.lm_head, norm_out), ["logits"])
+    _node(
+        nodes,
+        "model.norm",
+        "rms_norm",
+        [hidden_name, "model.norm.weight"],
+        [norm_out],
+        {"eps": float(model.model.norm.variance_epsilon)},
+    )
+    _node(
+        nodes,
+        "lm_head",
+        "linear",
+        _linear_inputs(weights, "lm_head", model.lm_head, norm_out),
+        ["logits"],
+    )
 
     weights_path = weights.write()
     graph = {
@@ -299,12 +445,18 @@ def _export_qwen2_causal_lm(model: torch.nn.Module, output_dir: Path,
     return _write_graph(output_dir, stem, graph), weights_path
 
 
-def export_module(model: torch.nn.Module, example_inputs: tuple[torch.Tensor, ...],
-                  output_dir: str | Path, model_type: str = "pytorch_fx",
-                  stem: str = "model") -> tuple[Path, Path]:
+def export_module(
+    model: torch.nn.Module,
+    example_inputs: tuple[torch.Tensor, ...],
+    output_dir: str | Path,
+    model_type: str = "pytorch_fx",
+    stem: str = "model",
+) -> tuple[Path, Path]:
     output = Path(output_dir)
     if _is_qwen2_causal_lm(model):
-        return _export_qwen2_causal_lm(model, output, "qwen2" if model_type == "pytorch_fx" else model_type, stem)
+        return _export_qwen2_causal_lm(
+            model, output, "qwen2" if model_type == "pytorch_fx" else model_type, stem
+        )
     return _export_fx(model, example_inputs, output, model_type, stem)
 
 
@@ -348,8 +500,12 @@ def main() -> int:
 
     factory = _load_factory(args.model)
     model = factory(**_parse_model_kwargs(args.model_kwarg))
-    example_inputs = tuple(torch.zeros(_parse_shape(shape), dtype=torch.float32) for shape in args.example_shape)
-    graph, weights = export_module(model, example_inputs, args.output_dir, args.model_type, args.stem)
+    example_inputs = tuple(
+        torch.zeros(_parse_shape(shape), dtype=torch.float32) for shape in args.example_shape
+    )
+    graph, weights = export_module(
+        model, example_inputs, args.output_dir, args.model_type, args.stem
+    )
     print(graph)
     print(weights)
     return 0

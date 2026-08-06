@@ -43,4 +43,3 @@ def test_weight_writer_manifest_and_payload() -> None:
 if __name__ == "__main__":
     test_dtype_name()
     test_weight_writer_manifest_and_payload()
-

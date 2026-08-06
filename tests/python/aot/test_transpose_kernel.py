@@ -10,4 +10,3 @@ def test_transpose2d_kernel_signature() -> None:
 
 if __name__ == "__main__":
     test_transpose2d_kernel_signature()
-

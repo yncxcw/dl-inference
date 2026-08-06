@@ -9,4 +9,3 @@ def test_reshape_kernel_module_documents_cpp_registration() -> None:
 
 if __name__ == "__main__":
     test_reshape_kernel_module_documents_cpp_registration()
-

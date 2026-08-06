@@ -62,4 +62,3 @@ def test_python_graph_round_trip() -> None:
 if __name__ == "__main__":
     test_python_engine_runs_aten_graph()
     test_python_graph_round_trip()
-

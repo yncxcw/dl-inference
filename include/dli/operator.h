@@ -21,8 +21,7 @@ class Operator {
   virtual ~Operator() = default;
   virtual std::string type() const = 0;
   virtual void compute(const std::vector<const Tensor*>& inputs,
-                       const std::vector<Tensor*>& outputs,
-                       const Attributes& attrs,
+                       const std::vector<Tensor*>& outputs, const Attributes& attrs,
                        ExecutionContext& context) const = 0;
 };
 

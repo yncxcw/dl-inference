@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${ROOT_DIR}"
+
+usage() {
+  echo "Usage: ./format [--check]" >&2
+}
+
+check=0
+if [[ $# -gt 1 ]]; then
+  usage
+  exit 2
+fi
+if [[ $# -eq 1 ]]; then
+  if [[ "$1" != "--check" ]]; then
+    usage
+    exit 2
+  fi
+  check=1
+fi
+
+clang_format="${CLANG_FORMAT:-clang-format}"
+if ! command -v "${clang_format}" >/dev/null 2>&1; then
+  echo "error: ${clang_format} is required" >&2
+  exit 1
+fi
+if ! python3 -m black --version >/dev/null 2>&1; then
+  echo "error: Black is required (install with: python3 -m pip install black==24.10.0)" >&2
+  exit 1
+fi
+
+mapfile -d '' python_files < <(git ls-files -z -- '*.py')
+mapfile -d '' cpp_files < <(
+  git ls-files -z -- '*.c' '*.cc' '*.cpp' '*.cxx' '*.h' '*.hh' '*.hpp' '*.hxx' \
+    ':(exclude)python/dli_ops/aot/*/template.cc'
+)
+
+if (( check )); then
+  ((${#python_files[@]} == 0)) || python3 -m black --workers 1 --check "${python_files[@]}"
+  ((${#cpp_files[@]} == 0)) || "${clang_format}" --dry-run --Werror "${cpp_files[@]}"
+else
+  ((${#python_files[@]} == 0)) || python3 -m black --workers 1 "${python_files[@]}"
+  ((${#cpp_files[@]} == 0)) || "${clang_format}" -i "${cpp_files[@]}"
+fi
