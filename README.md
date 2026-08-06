@@ -119,11 +119,31 @@ without launching GPU inference.
 
 ## Python Binding
 
-The build also emits a native Python module under `build/python/dli`. Use it by
-putting that directory on `PYTHONPATH`:
+Build and install the Python wheel with:
 
 ```bash
-PYTHONPATH=build/python python3 - <<'PY'
+python3 -m pip install build
+python3 -m build --wheel
+python3 -m pip install dist/dl_inference-*.whl
+```
+
+The wheel builds the native binding and bundles `libdli_core.so`, `dli`,
+`dli_export`, and `dli_ops`. PyTorch is a runtime dependency. Triton AOT plugin
+compilation is intentionally disabled for the wheel; build the full
+project when you need `libdli_triton_aot_ops.so`.
+
+For development without a wheel, the regular CMake build emits the native
+module under `build/python/dli`. Put that directory on `PYTHONPATH`:
+
+```bash
+export PYTHONPATH="$PWD/build/python${PYTHONPATH:+:$PYTHONPATH}"
+```
+
+Run inference from Python by constructing or loading a graph, creating an
+engine, and passing PyTorch tensors by input name:
+
+```bash
+python3 - <<'PY'
 import json
 import torch
 import dli
@@ -145,6 +165,15 @@ engine = dli.Engine()
 outputs = engine.run(graph, {"x": torch.tensor([-1.0, 2.0])})
 print(outputs["y"])
 PY
+```
+
+Load an exported graph and its weights from files with:
+
+```python
+graph = dli.Graph.from_json_file("model.dli.json")
+inputs = dli.load_weights("model.dli.weights.json")
+inputs["x"] = torch.randn(1, 3, 32, 32)
+outputs = dli.Engine().run(graph, inputs)
 ```
 
 For Triton AOT graphs, load the generated operator plugin before `run`:

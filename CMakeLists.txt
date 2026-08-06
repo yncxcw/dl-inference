@@ -59,6 +59,7 @@ target_include_directories(dli_core
 
 target_compile_features(dli_core PUBLIC cxx_std_20)
 set_target_properties(dli_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(dli_core PROPERTIES INSTALL_RPATH "$ORIGIN;$ORIGIN/../torch/lib")
 
 if(DLI_USE_TORCH_TENSOR)
   target_compile_definitions(dli_core PUBLIC DLI_USE_TORCH_TENSOR=1)
@@ -89,6 +90,7 @@ if(DLI_BUILD_PYTHON_BINDINGS)
   set_target_properties(_dli_native PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/python/dli
     BUILD_RPATH "$<TARGET_FILE_DIR:dli_core>;${DLI_TORCH_PACKAGE_DIR}/lib"
+    INSTALL_RPATH "$ORIGIN;$ORIGIN/../torch/lib"
   )
   add_custom_command(TARGET _dli_native POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/python/dli
@@ -96,6 +98,10 @@ if(DLI_BUILD_PYTHON_BINDINGS)
       ${CMAKE_CURRENT_SOURCE_DIR}/python/dli/__init__.py
       ${CMAKE_CURRENT_BINARY_DIR}/python/dli/__init__.py
     VERBATIM
+  )
+
+  install(TARGETS dli_core _dli_native
+    LIBRARY DESTINATION dli
   )
 endif()
 

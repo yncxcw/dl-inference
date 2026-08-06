@@ -1,3 +1,34 @@
+[build-system]
+requires = [
+  "scikit-build-core>=0.10",
+  "torch>=2.7",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "dl-inference"
+version = "0.1.0"
+description = "Python bindings and model tooling for the dl-inference runtime"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = ["torch>=2.7"]
+
+[tool.scikit-build]
+cmake.build-type = "Release"
+cmake.args = [
+  "-DDLI_BUILD_TESTS=OFF",
+  "-DDLI_BUILD_EXAMPLES=OFF",
+  "-DDLI_ENABLE_GRPC=OFF",
+  "-DDLI_ENABLE_TRITON_AOT=OFF",
+  "-DDLI_BUILD_PYTHON_BINDINGS=ON",
+]
+wheel.packages = [
+  "python/dli",
+  "python/dli_export",
+  "python/dli_ops",
+]
+
 [tool.black]
 line-length = 100
 target-version = ["py310"]
