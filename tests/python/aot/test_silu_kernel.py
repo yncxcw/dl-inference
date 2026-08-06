@@ -10,4 +10,3 @@ def test_silu_kernel_signature() -> None:
 
 if __name__ == "__main__":
     test_silu_kernel_signature()
-

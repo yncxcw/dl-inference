@@ -14,7 +14,9 @@ class AttentionOperatorNumericsTest(unittest.TestCase):
         q = torch.tensor([[[[0.2, -0.4], [1.0, 0.5]], [[-0.3, 0.7], [0.8, -0.6]]]])
         k = torch.tensor([[[[0.1, 0.9], [-0.5, 0.2]], [[0.6, -0.1], [0.3, 0.4]]]])
         v = torch.tensor([[[[1.0, -1.0], [0.5, 0.25]], [[-0.2, 0.8], [1.2, -0.7]]]])
-        actual = run_operator("attention", {"q": q, "k": k, "v": v}, attrs={"causal": True})["output"]
+        actual = run_operator("attention", {"q": q, "k": k, "v": v}, attrs={"causal": True})[
+            "output"
+        ]
         scores = (q @ k.transpose(-1, -2)) / math.sqrt(q.shape[-1])
         mask = torch.tril(torch.ones(q.shape[-2], k.shape[-2], dtype=torch.bool))
         expected = torch.softmax(scores.masked_fill(~mask, float("-inf")), dim=-1) @ v

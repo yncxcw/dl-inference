@@ -71,9 +71,7 @@ void setLogSink(LogSink sink) {
   sinkStorage() = std::move(sink);
 }
 
-void resetLogSink() {
-  setLogSink({});
-}
+void resetLogSink() { setLogSink({}); }
 
 LogMessage::LogMessage(LogSeverity severity, const char* file, int line)
     : severity_(severity), file_(file), line_(line) {}

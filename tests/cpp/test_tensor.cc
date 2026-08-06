@@ -1,11 +1,10 @@
-#include "test_support.h"
-
 #include <ATen/ATen.h>
 
 #include <cstdint>
 #include <vector>
 
 #include "dli/tensor.h"
+#include "test_support.h"
 
 int main() {
   return dli_test::run("Tensor", [] {
@@ -16,8 +15,8 @@ int main() {
     dli_test::expect(dli::dtypeFromString("i64") == dli::DType::Int64, "int64 dtype alias");
     dli_test::expect(dli::byteSize(dli::DType::Int64) == sizeof(std::int64_t), "int64 byte size");
 
-    auto torch_tensor = at::tensor({1.0f, 2.0f, 3.0f, 4.0f},
-                                   at::TensorOptions().dtype(at::kFloat)).view({2, 2});
+    auto torch_tensor =
+        at::tensor({1.0f, 2.0f, 3.0f, 4.0f}, at::TensorOptions().dtype(at::kFloat)).view({2, 2});
     auto tensor = dli::Tensor(torch_tensor);
     dli_test::expect(tensor.isCpu(), "host tensor device");
     dli_test::expect(tensor.numel() == 4, "host tensor numel");
@@ -31,8 +30,7 @@ int main() {
     dli_test::expect(host_view.shape() == std::vector<std::int64_t>({4}), "host tensor view shape");
     dli_test::expect(dli::sameShape(ints, dli::Tensor::zeros(dli::DType::Int64, {2, 2})),
                      "same shape helper");
-    dli_test::expect(dli::contiguousOffset({2, 3, 4}, {1, 2, 3}) == 23,
-                     "contiguous offset");
+    dli_test::expect(dli::contiguousOffset({2, 3, 4}, {1, 2, 3}) == 23, "contiguous offset");
 
     auto* fake_ptr = reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x1000));
     auto external = dli::Tensor::externalCuda(dli::DType::Float32, {2, 3}, fake_ptr, 0);
@@ -53,4 +51,3 @@ int main() {
     dli_test::expectThrows([] { dli::deviceFromString("bad"); }, "bad device should throw");
   });
 }
-

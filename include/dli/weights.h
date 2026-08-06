@@ -7,8 +7,7 @@
 
 namespace dli {
 
-TensorMap loadWeights(const std::string& manifest_path,
-                      DeviceType device = DeviceType::Cpu,
+TensorMap loadWeights(const std::string& manifest_path, DeviceType device = DeviceType::Cpu,
                       int device_id = 0);
 
 }  // namespace dli

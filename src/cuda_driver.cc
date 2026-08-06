@@ -17,8 +17,8 @@ using CuInitFn = CUresult (*)(unsigned int);
 using CuModuleLoadDataFn = CUresult (*)(CUmodule*, const void*);
 using CuModuleGetFunctionFn = CUresult (*)(CUfunction*, CUmodule, const char*);
 using CuModuleUnloadFn = CUresult (*)(CUmodule);
-using CuLaunchKernelFn = CUresult (*)(CUfunction, unsigned, unsigned, unsigned, unsigned,
-                                      unsigned, unsigned, unsigned, CUstream, void**, void**);
+using CuLaunchKernelFn = CUresult (*)(CUfunction, unsigned, unsigned, unsigned, unsigned, unsigned,
+                                      unsigned, unsigned, CUstream, void**, void**);
 using CuGetErrorStringFn = CUresult (*)(CUresult, const char**);
 
 struct Driver {
@@ -41,7 +41,8 @@ struct Driver {
     if (handle == nullptr) return;
     init = reinterpret_cast<CuInitFn>(dlsym(handle, "cuInit"));
     module_load_data = reinterpret_cast<CuModuleLoadDataFn>(dlsym(handle, "cuModuleLoadData"));
-    module_get_function = reinterpret_cast<CuModuleGetFunctionFn>(dlsym(handle, "cuModuleGetFunction"));
+    module_get_function =
+        reinterpret_cast<CuModuleGetFunctionFn>(dlsym(handle, "cuModuleGetFunction"));
     module_unload = reinterpret_cast<CuModuleUnloadFn>(dlsym(handle, "cuModuleUnload"));
     launch_kernel = reinterpret_cast<CuLaunchKernelFn>(dlsym(handle, "cuLaunchKernel"));
     get_error_string = reinterpret_cast<CuGetErrorStringFn>(dlsym(handle, "cuGetErrorString"));
@@ -79,22 +80,20 @@ std::string errorString(CUresult result) {
 }
 
 void requireDriver() {
-  if (!cudaDriverAvailable()) throw std::runtime_error("CUDA driver is unavailable: " + cudaDriverError());
+  if (!cudaDriverAvailable())
+    throw std::runtime_error("CUDA driver is unavailable: " + cudaDriverError());
 }
 
 void requireSuccess(CUresult result, const std::string& operation) {
-  if (result != kCudaSuccess) throw std::runtime_error(operation + " failed: " + errorString(result));
+  if (result != kCudaSuccess)
+    throw std::runtime_error(operation + " failed: " + errorString(result));
 }
 
 }  // namespace
 
-bool cudaDriverAvailable() {
-  return driver().handle != nullptr;
-}
+bool cudaDriverAvailable() { return driver().handle != nullptr; }
 
-std::string cudaDriverError() {
-  return driver().load_error;
-}
+std::string cudaDriverError() { return driver().load_error; }
 
 CudaAotKernel::CudaAotKernel(const char* kernel_name, const unsigned char* cubin,
                              std::size_t cubin_size, unsigned shared_memory_bytes)
@@ -123,10 +122,9 @@ void CudaAotKernel::launch(void** args, unsigned grid_x, unsigned grid_y, unsign
                            unsigned threads_per_block, void* stream) {
   if (grid_x == 0 || grid_y == 0 || grid_z == 0) return;
   load();
-  requireSuccess(driver().launch_kernel(static_cast<CUfunction>(function_), grid_x, grid_y,
-                                        grid_z, threads_per_block, 1, 1,
-                                        shared_memory_bytes_, static_cast<CUstream>(stream),
-                                        args, nullptr),
+  requireSuccess(driver().launch_kernel(static_cast<CUfunction>(function_), grid_x, grid_y, grid_z,
+                                        threads_per_block, 1, 1, shared_memory_bytes_,
+                                        static_cast<CUstream>(stream), args, nullptr),
                  std::string("cuLaunchKernel(") + kernel_name_ + ")");
 }
 

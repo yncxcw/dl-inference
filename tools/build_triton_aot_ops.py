@@ -95,7 +95,9 @@ def compile_spec(modules: dict[str, object], spec: AotSpec, arch: int) -> Compil
     for key in constants:
         signature[key] = "constexpr"
     attrs = {k: [["tt.divisibility", 16]] for k, v in hints.items() if v == 16}
-    src = triton.compiler.ASTSource(fn=kernel, constexprs=constants, signature=signature, attrs=attrs)
+    src = triton.compiler.ASTSource(
+        fn=kernel, constexprs=constants, signature=signature, attrs=attrs
+    )
     ccinfo = triton.compile(
         src,
         target=GPUTarget("cuda", arch, 32),
@@ -117,53 +119,191 @@ def default_specs() -> list[AotSpec]:
     specs: list[AotSpec] = []
     for hidden in (2, 4, 8, 128, 4096):
         block_d = max(16, 1 << (hidden - 1).bit_length())
-        specs.append(AotSpec(f"embedding_h{hidden}", "embedding", "embedding_kernel",
-                             ("*i64", "*fp32", "*fp32", "i32", str(hidden), "16", str(block_d))))
-        specs.append(AotSpec(f"rms_norm_h{hidden}", "rms_norm", "rms_norm_kernel",
-                             ("*fp32", "*fp32", "*fp32", "i32", "fp32", str(hidden), str(block_d))))
+        specs.append(
+            AotSpec(
+                f"embedding_h{hidden}",
+                "embedding",
+                "embedding_kernel",
+                ("*i64", "*fp32", "*fp32", "i32", str(hidden), "16", str(block_d)),
+            )
+        )
+        specs.append(
+            AotSpec(
+                f"rms_norm_h{hidden}",
+                "rms_norm",
+                "rms_norm_kernel",
+                ("*fp32", "*fp32", "*fp32", "i32", "fp32", str(hidden), str(block_d)),
+            )
+        )
     for k in (2, 4, 8, 64, 128, 1024, 4096):
         for has_bias in (0, 1):
-            specs.append(AotSpec(f"linear_k{k}_b{has_bias}", "linear", "linear_kernel",
-                                 ("*fp32", "*fp32", "*fp32", "*fp32", "i32", "i32",
-                                  str(k), str(has_bias), "16", "16", "32")))
-        specs.append(AotSpec(f"matmul_k{k}", "matmul", "matmul_kernel",
-                             ("*fp32", "*fp32", "*fp32", "i32", "i32", str(k), "16", "16", "32")))
-    specs.append(AotSpec("add", "add", "add_kernel", ("*fp32", "*fp32", "*fp32", "i32", "i32", "256")))
-    specs.append(AotSpec("mul", "mul", "mul_kernel", ("*fp32", "*fp32", "*fp32", "i32", "i32", "256")))
+            specs.append(
+                AotSpec(
+                    f"linear_k{k}_b{has_bias}",
+                    "linear",
+                    "linear_kernel",
+                    (
+                        "*fp32",
+                        "*fp32",
+                        "*fp32",
+                        "*fp32",
+                        "i32",
+                        "i32",
+                        str(k),
+                        str(has_bias),
+                        "16",
+                        "16",
+                        "32",
+                    ),
+                )
+            )
+        specs.append(
+            AotSpec(
+                f"matmul_k{k}",
+                "matmul",
+                "matmul_kernel",
+                ("*fp32", "*fp32", "*fp32", "i32", "i32", str(k), "16", "16", "32"),
+            )
+        )
+    specs.append(
+        AotSpec("add", "add", "add_kernel", ("*fp32", "*fp32", "*fp32", "i32", "i32", "256"))
+    )
+    specs.append(
+        AotSpec("mul", "mul", "mul_kernel", ("*fp32", "*fp32", "*fp32", "i32", "i32", "256"))
+    )
     specs.append(AotSpec("silu", "silu", "silu_kernel", ("*fp32", "*fp32", "i32", "256")))
     specs.append(AotSpec("relu", "relu", "relu_kernel", ("*fp32", "*fp32", "i32", "256")))
     for block in (8, 16, 32, 64, 128, 256, 512):
-        specs.append(AotSpec(f"softmax_b{block}", "softmax", "softmax_kernel",
-                             ("*fp32", "*fp32", "i32", "i32", str(block))))
-    specs.append(AotSpec("transpose2d", "transpose", "transpose2d_kernel",
-                         ("*fp32", "*fp32", "i32", "i32", "16", "16")))
+        specs.append(
+            AotSpec(
+                f"softmax_b{block}",
+                "softmax",
+                "softmax_kernel",
+                ("*fp32", "*fp32", "i32", "i32", str(block)),
+            )
+        )
+    specs.append(
+        AotSpec(
+            "transpose2d",
+            "transpose",
+            "transpose2d_kernel",
+            ("*fp32", "*fp32", "i32", "i32", "16", "16"),
+        )
+    )
     for in_c, kh, kw in ((1, 2, 2), (1, 3, 3), (3, 3, 3), (8, 3, 3), (16, 3, 3)):
         for has_bias in (0, 1):
-            specs.append(AotSpec(f"conv_c{in_c}_k{kh}x{kw}_b{has_bias}", "conv2d", "conv2d_kernel",
-                                 ("*fp32", "*fp32", "*fp32", "*fp32", "i32", "i32", "i32",
-                                  "i32", "i32", "i32", "i32", "i32", "i32", "i32", "i32",
-                                  str(in_c), str(kh), str(kw), str(has_bias), "128")))
+            specs.append(
+                AotSpec(
+                    f"conv_c{in_c}_k{kh}x{kw}_b{has_bias}",
+                    "conv2d",
+                    "conv2d_kernel",
+                    (
+                        "*fp32",
+                        "*fp32",
+                        "*fp32",
+                        "*fp32",
+                        "i32",
+                        "i32",
+                        "i32",
+                        "i32",
+                        "i32",
+                        "i32",
+                        "i32",
+                        "i32",
+                        "i32",
+                        "i32",
+                        "i32",
+                        str(in_c),
+                        str(kh),
+                        str(kw),
+                        str(has_bias),
+                        "128",
+                    ),
+                )
+            )
     for kh, kw in ((2, 2), (3, 3)):
-        specs.append(AotSpec(f"maxpool_k{kh}x{kw}", "max_pool2d", "max_pool2d_kernel",
-                             ("*fp32", "*fp32", "i32", "i32", "i32", "i32", "i32",
-                              "i32", "i32", "i32", "i32", "i32", "i32",
-                              str(kh), str(kw), "128")))
+        specs.append(
+            AotSpec(
+                f"maxpool_k{kh}x{kw}",
+                "max_pool2d",
+                "max_pool2d_kernel",
+                (
+                    "*fp32",
+                    "*fp32",
+                    "i32",
+                    "i32",
+                    "i32",
+                    "i32",
+                    "i32",
+                    "i32",
+                    "i32",
+                    "i32",
+                    "i32",
+                    "i32",
+                    "i32",
+                    str(kh),
+                    str(kw),
+                    "128",
+                ),
+            )
+        )
     attention_shapes = [
-        (1, 1, 2), (1, 2, 2), (2, 2, 2),
-        (1, 1, 128), (1, 128, 128), (1, 512, 128), (1, 2048, 128), (128, 128, 128),
+        (1, 1, 2),
+        (1, 2, 2),
+        (2, 2, 2),
+        (1, 1, 128),
+        (1, 128, 128),
+        (1, 512, 128),
+        (1, 2048, 128),
+        (128, 128, 128),
     ]
     for seq_q, seq_k, head_dim in attention_shapes:
         for causal in (0, 1):
-            scale = 1.0 / (head_dim ** 0.5)
+            scale = 1.0 / (head_dim**0.5)
             block_d = max(16, 1 << (head_dim - 1).bit_length())
-            specs.append(AotSpec(f"attention_q{seq_q}_k{seq_k}_d{head_dim}_c{causal}", "attention",
-                                 "attention_kernel",
-                                 ("*fp32", "*fp32", "*fp32", "*fp32", str(seq_q), str(seq_k),
-                                  str(head_dim), str(causal), repr(scale), "16", "32", str(block_d))))
+            specs.append(
+                AotSpec(
+                    f"attention_q{seq_q}_k{seq_k}_d{head_dim}_c{causal}",
+                    "attention",
+                    "attention_kernel",
+                    (
+                        "*fp32",
+                        "*fp32",
+                        "*fp32",
+                        "*fp32",
+                        str(seq_q),
+                        str(seq_k),
+                        str(head_dim),
+                        str(causal),
+                        repr(scale),
+                        "16",
+                        "32",
+                        str(block_d),
+                    ),
+                )
+            )
     for head_dim, seq, pairs in ((2, 1, 1), (2, 2, 1), (128, 1, 64), (128, 128, 64)):
-        specs.append(AotSpec(f"rotary_d{head_dim}_s{seq}_p{pairs}", "rotary", "rotary_kernel",
-                             ("*fp32", "*fp32", "*fp32", "*fp32", "*fp32", "*fp32",
-                              "i32", "i32", str(head_dim), str(seq), str(pairs), "128")))
+        specs.append(
+            AotSpec(
+                f"rotary_d{head_dim}_s{seq}_p{pairs}",
+                "rotary",
+                "rotary_kernel",
+                (
+                    "*fp32",
+                    "*fp32",
+                    "*fp32",
+                    "*fp32",
+                    "*fp32",
+                    "*fp32",
+                    "i32",
+                    "i32",
+                    str(head_dim),
+                    str(seq),
+                    str(pairs),
+                    "128",
+                ),
+            )
+        )
     return specs
 
 
@@ -172,17 +312,18 @@ def c_array(data: bytes) -> str:
     return ", ".join(f"0x{hexed[i:i + 2]}" for i in range(0, len(hexed), 2))
 
 
-def emit_plugin(compiled: list[CompiledSpec], kernel_root: Path,
-                operator_names: tuple[str, ...]) -> str:
+def emit_plugin(
+    compiled: list[CompiledSpec], kernel_root: Path, operator_names: tuple[str, ...]
+) -> str:
     arrays = []
     replacements = {}
     for item in compiled:
-        suffix = item.symbol[len(item.spec.id) + 1:]
+        suffix = item.symbol[len(item.spec.id) + 1 :]
         replacements[f"{{{{HASH_{item.spec.id}}}}}"] = suffix
         arrays.append(
             f"static const unsigned char {item.symbol}_cubin[] = {{ {c_array(item.cubin)} }};\n"
             f"static dli::CudaAotKernel& {item.symbol}_kernel() {{\n"
-            f"  static dli::CudaAotKernel kernel(\"{item.spec.kernel_name}\", {item.symbol}_cubin,"
+            f'  static dli::CudaAotKernel kernel("{item.spec.kernel_name}", {item.symbol}_cubin,'
             f" sizeof({item.symbol}_cubin), {item.shared});\n"
             f"  return kernel;\n"
             f"}}\n"
@@ -200,14 +341,17 @@ def emit_plugin(compiled: list[CompiledSpec], kernel_root: Path,
             raise RuntimeError(f"unresolved kernel hash placeholder in {template_path}")
         templates.append(f"// {operator_name}\n" + text)
 
-    registrations = "\n".join(f"  register_{operator_name}(registry);" for operator_name in operator_names)
-    return (CPP_TEMPLATE
-            .replace("/*__AOT_KERNELS__*/", "\n".join(arrays))
-            .replace("/*__OPERATOR_TEMPLATES__*/", "\n\n".join(templates))
-            .replace("/*__REGISTER_OPERATORS__*/", registrations))
+    registrations = "\n".join(
+        f"  register_{operator_name}(registry);" for operator_name in operator_names
+    )
+    return (
+        CPP_TEMPLATE.replace("/*__AOT_KERNELS__*/", "\n".join(arrays))
+        .replace("/*__OPERATOR_TEMPLATES__*/", "\n\n".join(templates))
+        .replace("/*__REGISTER_OPERATORS__*/", registrations)
+    )
 
 
-CPP_TEMPLATE = r'''
+CPP_TEMPLATE = r"""
 #include "dli/cuda_driver.h"
 #include "dli/cuda_runtime.h"
 #include "dli/operator.h"
@@ -240,11 +384,16 @@ extern "C" bool dli_register_operators(dli::OperatorRegistry* registry) {
 /*__REGISTER_OPERATORS__*/
   return true;
 }
-'''
+"""
 
 
-def compile_shared(source: Path, output: Path, include_dir: Path, core_library_dir: Path,
-                   extra_include_dirs: list[Path]) -> None:
+def compile_shared(
+    source: Path,
+    output: Path,
+    include_dir: Path,
+    core_library_dir: Path,
+    extra_include_dirs: list[Path],
+) -> None:
     cxx = os.environ.get("CXX", "c++")
     cmd = [
         cxx,

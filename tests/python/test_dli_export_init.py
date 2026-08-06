@@ -10,4 +10,3 @@ def test_export_module_is_reexported() -> None:
 
 if __name__ == "__main__":
     test_export_module_is_reexported()
-

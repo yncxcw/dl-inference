@@ -11,8 +11,18 @@ from operator_test_support import CUDA_AVAILABLE, assert_close, run_operator
 @unittest.skipUnless(CUDA_AVAILABLE, "CUDA device is not available")
 class MaxPool2dOperatorNumericsTest(unittest.TestCase):
     def test_max_pool2d(self) -> None:
-        x = torch.tensor([[[[1.0, -1.0, 3.0, 2.0], [0.5, 4.0, -2.0, 1.5],
-                           [2.5, 0.0, 5.0, -0.5], [1.0, 3.5, 2.0, 4.5]]]])
+        x = torch.tensor(
+            [
+                [
+                    [
+                        [1.0, -1.0, 3.0, 2.0],
+                        [0.5, 4.0, -2.0, 1.5],
+                        [2.5, 0.0, 5.0, -0.5],
+                        [1.0, 3.5, 2.0, 4.5],
+                    ]
+                ]
+            ]
+        )
         actual = run_operator(
             "max_pool2d",
             {"x": x},

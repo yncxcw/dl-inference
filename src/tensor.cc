@@ -43,7 +43,8 @@ at::TensorOptions optionsFor(DType dtype, DeviceType device, int device_id = 0) 
 
 void checkHostData(const Tensor& tensor, DType dtype) {
   if (!tensor.isCpu()) throw std::logic_error("host data access requested for non-CPU tensor");
-  if (tensor.dtype() != dtype) throw std::logic_error("tensor dtype does not match requested host type");
+  if (tensor.dtype() != dtype)
+    throw std::logic_error("tensor dtype does not match requested host type");
 }
 
 }  // namespace
@@ -133,7 +134,8 @@ Tensor Tensor::cuda(DType dtype, std::vector<std::int64_t> shape, int device_id)
   for (const auto dim : shape) {
     if (dim < 0) throw std::invalid_argument("negative tensor dimension");
   }
-  return Tensor(std::make_shared<Impl>(at::empty(shape, optionsFor(dtype, DeviceType::Cuda, device_id))));
+  return Tensor(
+      std::make_shared<Impl>(at::empty(shape, optionsFor(dtype, DeviceType::Cuda, device_id))));
 }
 
 Tensor Tensor::externalCuda(DType dtype, std::vector<std::int64_t> shape, void* data,
@@ -171,9 +173,7 @@ std::size_t Tensor::numel() const {
   return static_cast<std::size_t>(elements);
 }
 
-std::size_t Tensor::nbytes() const {
-  return numel() * byteSize(dtype_);
-}
+std::size_t Tensor::nbytes() const { return numel() * byteSize(dtype_); }
 
 void* Tensor::deviceData() {
   if (device_ != DeviceType::Cuda) throw std::logic_error("tensor is not on CUDA");
@@ -201,13 +201,9 @@ Tensor Tensor::withShape(std::vector<std::int64_t> shape) const {
   return Tensor(std::make_shared<Impl>(impl().tensor.view(shape)));
 }
 
-at::Tensor& Tensor::torchTensor() {
-  return impl().tensor;
-}
+at::Tensor& Tensor::torchTensor() { return impl().tensor; }
 
-const at::Tensor& Tensor::torchTensor() const {
-  return impl().tensor;
-}
+const at::Tensor& Tensor::torchTensor() const { return impl().tensor; }
 
 template <>
 float* Tensor::data<float>() {
@@ -233,18 +229,18 @@ const std::int64_t* Tensor::data<std::int64_t>() const {
   return impl().tensor.data_ptr<std::int64_t>();
 }
 
-bool sameShape(const Tensor& lhs, const Tensor& rhs) {
-  return lhs.shape() == rhs.shape();
-}
+bool sameShape(const Tensor& lhs, const Tensor& rhs) { return lhs.shape() == rhs.shape(); }
 
 std::size_t contiguousOffset(const std::vector<std::int64_t>& shape,
                              const std::vector<std::int64_t>& indices) {
-  if (shape.size() != indices.size()) throw std::invalid_argument("rank mismatch in contiguousOffset");
+  if (shape.size() != indices.size())
+    throw std::invalid_argument("rank mismatch in contiguousOffset");
   std::size_t offset = 0;
   std::size_t stride = 1;
   for (std::size_t reverse = 0; reverse < shape.size(); ++reverse) {
     const auto i = shape.size() - 1 - reverse;
-    if (indices[i] < 0 || indices[i] >= shape[i]) throw std::out_of_range("tensor index out of range");
+    if (indices[i] < 0 || indices[i] >= shape[i])
+      throw std::out_of_range("tensor index out of range");
     offset += static_cast<std::size_t>(indices[i]) * stride;
     stride *= static_cast<std::size_t>(shape[i]);
   }

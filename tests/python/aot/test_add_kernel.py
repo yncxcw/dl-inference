@@ -10,4 +10,3 @@ def test_add_kernel_signature() -> None:
 
 if __name__ == "__main__":
     test_add_kernel_signature()
-

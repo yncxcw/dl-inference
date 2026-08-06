@@ -5,17 +5,14 @@
 
 namespace dli {
 
-std::int64_t product(const std::vector<std::int64_t>& shape, std::size_t begin,
-                     std::size_t end) {
+std::int64_t product(const std::vector<std::int64_t>& shape, std::size_t begin, std::size_t end) {
   if (end == static_cast<std::size_t>(-1)) end = shape.size();
   std::int64_t out = 1;
   for (std::size_t i = begin; i < end; ++i) out *= shape[i];
   return out;
 }
 
-unsigned ceilDiv(std::int64_t a, std::int64_t b) {
-  return static_cast<unsigned>((a + b - 1) / b);
-}
+unsigned ceilDiv(std::int64_t a, std::int64_t b) { return static_cast<unsigned>((a + b - 1) / b); }
 
 std::string formatShape(const std::vector<std::int64_t>& shape) {
   std::ostringstream out;
@@ -52,9 +49,7 @@ std::vector<std::int64_t> attrInts(const Attributes& attrs, const std::string& n
   return attrs.require<std::vector<std::int64_t>>(name);
 }
 
-void* ptr(const Tensor& tensor) {
-  return const_cast<void*>(tensor.deviceData());
-}
+void* ptr(const Tensor& tensor) { return const_cast<void*>(tensor.deviceData()); }
 
 std::vector<std::int64_t> reshapeShape(const std::vector<std::int64_t>& input,
                                        std::vector<std::int64_t> target) {
@@ -72,7 +67,8 @@ std::vector<std::int64_t> reshapeShape(const std::vector<std::int64_t>& input,
   }
   const auto numel = product(input);
   if (infer != -1) {
-    if (numel % known != 0) throw std::invalid_argument("reshape inferred dimension is not integral");
+    if (numel % known != 0)
+      throw std::invalid_argument("reshape inferred dimension is not integral");
     target[static_cast<std::size_t>(infer)] = numel / known;
   }
   if (product(target) != numel) throw std::invalid_argument("reshape changes element count");

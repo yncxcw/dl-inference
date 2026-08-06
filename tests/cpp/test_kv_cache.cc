@@ -1,8 +1,7 @@
-#include "test_support.h"
-
 #include <ATen/ATen.h>
 
 #include "dli/kv_cache.h"
+#include "test_support.h"
 
 int main() {
   return dli_test::run("KVCache", [] {
@@ -17,4 +16,3 @@ int main() {
     dli_test::expect(cache.size() == 0, "kv cache clear");
   });
 }
-

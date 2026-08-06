@@ -1,10 +1,9 @@
-#include "test_support.h"
-
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "dli/attributes.h"
+#include "test_support.h"
 
 int main() {
   return dli_test::run("Attributes", [] {
@@ -37,4 +36,3 @@ int main() {
                            "attribute missing should throw");
   });
 }
-

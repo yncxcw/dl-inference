@@ -1,5 +1,4 @@
 #include "dli/grpc/server.h"
-
 #include "test_support.h"
 
 int main() {

@@ -1,5 +1,3 @@
-#include "test_support.h"
-
 #include <ATen/ATen.h>
 
 #include <cstdint>
@@ -11,6 +9,7 @@
 #include "dli/engine.h"
 #include "dli/graph.h"
 #include "dli/tensor.h"
+#include "test_support.h"
 
 int main() {
   return dli_test::run("AtenOperator", [] {

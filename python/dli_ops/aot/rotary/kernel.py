@@ -3,9 +3,20 @@ import triton.language as tl
 
 
 @triton.jit
-def rotary_kernel(q, k, cos, sin, out_q, out_k, total_pairs, start_pos,
-                  head_dim: tl.constexpr, seq: tl.constexpr, rotary_pairs: tl.constexpr,
-                  BLOCK: tl.constexpr):
+def rotary_kernel(
+    q,
+    k,
+    cos,
+    sin,
+    out_q,
+    out_k,
+    total_pairs,
+    start_pos,
+    head_dim: tl.constexpr,
+    seq: tl.constexpr,
+    rotary_pairs: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = offs < total_pairs
     pair = offs % rotary_pairs

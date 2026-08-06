@@ -12,7 +12,9 @@ class EmbeddingOperatorNumericsTest(unittest.TestCase):
     def test_embedding(self) -> None:
         ids = torch.tensor([[2, 1], [0, 3]], dtype=torch.int64)
         table = torch.arange(20, dtype=torch.float32).reshape(5, 4) / 10.0
-        assert_close(self, run_operator("embedding", {"ids": ids, "table": table})["output"], table[ids])
+        assert_close(
+            self, run_operator("embedding", {"ids": ids, "table": table})["output"], table[ids]
+        )
 
 
 if __name__ == "__main__":

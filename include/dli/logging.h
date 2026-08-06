@@ -11,9 +11,7 @@ namespace dli {
 
 enum class LogSeverity { Debug, Info, Warn, Error };
 
-using LogSink = std::function<void(LogSeverity severity,
-                                   std::string_view file,
-                                   int line,
+using LogSink = std::function<void(LogSeverity severity, std::string_view file, int line,
                                    std::string_view message)>;
 
 const char* toString(LogSeverity severity);

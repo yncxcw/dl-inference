@@ -1,13 +1,13 @@
 #pragma once
 
+#include <ATen/ATen.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-#include <ATen/ATen.h>
 
 namespace dli {
 

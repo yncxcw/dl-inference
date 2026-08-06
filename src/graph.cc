@@ -100,13 +100,26 @@ class JsonParser {
       switch (escaped) {
         case '"':
         case '\\':
-        case '/': result.push_back(escaped); break;
-        case 'b': result.push_back('\b'); break;
-        case 'f': result.push_back('\f'); break;
-        case 'n': result.push_back('\n'); break;
-        case 'r': result.push_back('\r'); break;
-        case 't': result.push_back('\t'); break;
-        default: throw std::invalid_argument("unsupported JSON string escape");
+        case '/':
+          result.push_back(escaped);
+          break;
+        case 'b':
+          result.push_back('\b');
+          break;
+        case 'f':
+          result.push_back('\f');
+          break;
+        case 'n':
+          result.push_back('\n');
+          break;
+        case 'r':
+          result.push_back('\r');
+          break;
+        case 't':
+          result.push_back('\t');
+          break;
+        default:
+          throw std::invalid_argument("unsupported JSON string escape");
       }
     }
     throw std::invalid_argument("unterminated JSON string");
@@ -179,7 +192,8 @@ class JsonParser {
     return false;
   }
   void expect(char expected) {
-    if (!consume(expected)) throw std::invalid_argument(std::string("expected JSON token: ") + expected);
+    if (!consume(expected))
+      throw std::invalid_argument(std::string("expected JSON token: ") + expected);
   }
 
   std::string_view text_;
@@ -200,12 +214,14 @@ const JsonValue* optionalField(const JsonValue& object, const std::string& name)
 }
 
 std::string asString(const JsonValue& value, const std::string& field) {
-  if (value.type != JsonValue::Type::String) throw std::invalid_argument("JSON field must be string: " + field);
+  if (value.type != JsonValue::Type::String)
+    throw std::invalid_argument("JSON field must be string: " + field);
   return value.string_value;
 }
 
 std::vector<std::string> asStringArray(const JsonValue& value, const std::string& field) {
-  if (value.type != JsonValue::Type::Array) throw std::invalid_argument("JSON field must be string array: " + field);
+  if (value.type != JsonValue::Type::Array)
+    throw std::invalid_argument("JSON field must be string array: " + field);
   std::vector<std::string> result;
   for (const auto& item : value.array_value) result.push_back(asString(item, field));
   return result;
@@ -213,17 +229,22 @@ std::vector<std::string> asStringArray(const JsonValue& value, const std::string
 
 AttributeValue toAttributeValue(const JsonValue& value) {
   switch (value.type) {
-    case JsonValue::Type::Bool: return value.bool_value;
-    case JsonValue::Type::Int: return value.int_value;
-    case JsonValue::Type::Number: return value.number_value;
-    case JsonValue::Type::String: return value.string_value;
+    case JsonValue::Type::Bool:
+      return value.bool_value;
+    case JsonValue::Type::Int:
+      return value.int_value;
+    case JsonValue::Type::Number:
+      return value.number_value;
+    case JsonValue::Type::String:
+      return value.string_value;
     case JsonValue::Type::Array: {
       if (value.array_value.empty()) return std::vector<std::int64_t>{};
       bool all_strings = true, all_ints = true, all_numbers = true;
       for (const auto& item : value.array_value) {
         all_strings = all_strings && item.type == JsonValue::Type::String;
         all_ints = all_ints && item.type == JsonValue::Type::Int;
-        all_numbers = all_numbers && (item.type == JsonValue::Type::Int || item.type == JsonValue::Type::Number);
+        all_numbers = all_numbers &&
+                      (item.type == JsonValue::Type::Int || item.type == JsonValue::Type::Number);
       }
       if (all_strings) {
         std::vector<std::string> out;
@@ -238,13 +259,15 @@ AttributeValue toAttributeValue(const JsonValue& value) {
       if (all_numbers) {
         std::vector<double> out;
         for (const auto& item : value.array_value) {
-          out.push_back(item.type == JsonValue::Type::Int ? static_cast<double>(item.int_value) : item.number_value);
+          out.push_back(item.type == JsonValue::Type::Int ? static_cast<double>(item.int_value)
+                                                          : item.number_value);
         }
         return out;
       }
       break;
     }
-    default: break;
+    default:
+      break;
   }
   throw std::invalid_argument("unsupported attribute JSON value");
 }
@@ -252,10 +275,14 @@ AttributeValue toAttributeValue(const JsonValue& value) {
 std::string escapeJson(const std::string& value) {
   std::string out;
   for (const char c : value) {
-    if (c == '"') out += "\\\"";
-    else if (c == '\\') out += "\\\\";
-    else if (c == '\n') out += "\\n";
-    else out.push_back(c);
+    if (c == '"')
+      out += "\\\"";
+    else if (c == '\\')
+      out += "\\\\";
+    else if (c == '\n')
+      out += "\\n";
+    else
+      out.push_back(c);
   }
   return out;
 }
@@ -299,28 +326,41 @@ void appendAttributeValue(std::ostringstream& out, const AttributeValue& value) 
 
 Graph Graph::fromJson(const std::string& json) {
   const auto root = JsonParser(json).parse();
-  if (root.type != JsonValue::Type::Object) throw std::invalid_argument("graph JSON root must be an object");
+  if (root.type != JsonValue::Type::Object)
+    throw std::invalid_argument("graph JSON root must be an object");
   Graph graph;
-  if (const auto* format = optionalField(root, "format")) graph.format = asString(*format, "format");
-  if (graph.format != "dli.graph.v1") throw std::invalid_argument("unsupported graph format: " + graph.format);
-  if (const auto* model_type = optionalField(root, "model_type")) graph.model_type = asString(*model_type, "model_type");
-  if (const auto* weights = optionalField(root, "weights")) graph.weights = asString(*weights, "weights");
-  if (const auto* inputs = optionalField(root, "inputs")) graph.inputs = asStringArray(*inputs, "inputs");
-  if (const auto* outputs = optionalField(root, "outputs")) graph.outputs = asStringArray(*outputs, "outputs");
+  if (const auto* format = optionalField(root, "format"))
+    graph.format = asString(*format, "format");
+  if (graph.format != "dli.graph.v1")
+    throw std::invalid_argument("unsupported graph format: " + graph.format);
+  if (const auto* model_type = optionalField(root, "model_type"))
+    graph.model_type = asString(*model_type, "model_type");
+  if (const auto* weights = optionalField(root, "weights"))
+    graph.weights = asString(*weights, "weights");
+  if (const auto* inputs = optionalField(root, "inputs"))
+    graph.inputs = asStringArray(*inputs, "inputs");
+  if (const auto* outputs = optionalField(root, "outputs"))
+    graph.outputs = asStringArray(*outputs, "outputs");
 
   const auto& nodes_json = requireField(root, "nodes");
-  if (nodes_json.type != JsonValue::Type::Array) throw std::invalid_argument("graph nodes must be an array");
+  if (nodes_json.type != JsonValue::Type::Array)
+    throw std::invalid_argument("graph nodes must be an array");
   for (const auto& node_json : nodes_json.array_value) {
-    if (node_json.type != JsonValue::Type::Object) throw std::invalid_argument("graph node must be an object");
+    if (node_json.type != JsonValue::Type::Object)
+      throw std::invalid_argument("graph node must be an object");
     Node node;
     node.name = asString(requireField(node_json, "name"), "name");
-    if (const auto* op = optionalField(node_json, "op")) node.op_type = asString(*op, "op");
-    else node.op_type = asString(requireField(node_json, "op_type"), "op_type");
+    if (const auto* op = optionalField(node_json, "op"))
+      node.op_type = asString(*op, "op");
+    else
+      node.op_type = asString(requireField(node_json, "op_type"), "op_type");
     node.inputs = asStringArray(requireField(node_json, "inputs"), "inputs");
     node.outputs = asStringArray(requireField(node_json, "outputs"), "outputs");
     if (const auto* attrs = optionalField(node_json, "attrs")) {
-      if (attrs->type != JsonValue::Type::Object) throw std::invalid_argument("node attrs must be an object");
-      for (const auto& [name, value] : attrs->object_value) node.attributes.set(name, toAttributeValue(value));
+      if (attrs->type != JsonValue::Type::Object)
+        throw std::invalid_argument("node attrs must be an object");
+      for (const auto& [name, value] : attrs->object_value)
+        node.attributes.set(name, toAttributeValue(value));
     }
     graph.nodes.push_back(std::move(node));
   }
@@ -348,8 +388,8 @@ std::string Graph::toJson() const {
   out << ",\n  \"nodes\":[\n";
   for (std::size_t i = 0; i < nodes.size(); ++i) {
     const auto& node = nodes[i];
-    out << "    {\"name\":\"" << escapeJson(node.name) << "\",\"op\":\""
-        << escapeJson(node.op_type) << "\",\"inputs\":";
+    out << "    {\"name\":\"" << escapeJson(node.name) << "\",\"op\":\"" << escapeJson(node.op_type)
+        << "\",\"inputs\":";
     appendStringArray(out, node.inputs);
     out << ",\"outputs\":";
     appendStringArray(out, node.outputs);

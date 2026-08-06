@@ -22,4 +22,3 @@ def test_operator_spec_dataclass_defaults() -> None:
 
 if __name__ == "__main__":
     test_operator_spec_dataclass_defaults()
-

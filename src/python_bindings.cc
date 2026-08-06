@@ -1,8 +1,7 @@
+#include <ATen/ATen.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <torch/csrc/utils/pybind.h>
-
-#include <ATen/ATen.h>
 
 #include <map>
 #include <string>
@@ -42,9 +41,7 @@ TensorMap runGraph(Engine& engine, const Graph& graph, const py::dict& inputs) {
   return engine.run(graph, std::move(tensor_inputs));
 }
 
-DeviceType parseDevice(const std::string& device) {
-  return deviceFromString(device);
-}
+DeviceType parseDevice(const std::string& device) { return deviceFromString(device); }
 
 }  // namespace
 }  // namespace dli
@@ -71,21 +68,18 @@ PYBIND11_MODULE(_dli_native, m) {
             engine.registry().loadLibrary(path);
             return engine;
           },
-          py::arg("path"),
-          py::return_value_policy::reference_internal)
+          py::arg("path"), py::return_value_policy::reference_internal)
       .def(
           "run",
           [](dli::Engine& engine, const dli::Graph& graph, const py::dict& inputs) {
             return dli::tensorMapToPython(dli::runGraph(engine, graph, inputs));
           },
-          py::arg("graph"),
-          py::arg("inputs"));
+          py::arg("graph"), py::arg("inputs"));
 
   m.def(
       "load_weights",
       [](const std::string& path, const std::string& device) {
         return dli::tensorMapToPython(dli::loadWeights(path, dli::parseDevice(device)));
       },
-      py::arg("path"),
-      py::arg("device") = "cpu");
+      py::arg("path"), py::arg("device") = "cpu");
 }

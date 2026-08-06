@@ -26,11 +26,18 @@ Args parseArgs(int argc, char** argv) {
   Args args;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
-    if (arg == "--graph" && i + 1 < argc) args.graph = argv[++i];
-    else if (arg == "--inputs" && i + 1 < argc) args.inputs = argv[++i];
-    else if (arg == "--plugin" && i + 1 < argc) args.plugin = argv[++i];
-    else if (arg == "--output-dir" && i + 1 < argc) args.output_dir = argv[++i];
-    else throw std::invalid_argument("usage: dli_operator_engine_runner --graph path --inputs path --plugin path --output-dir path");
+    if (arg == "--graph" && i + 1 < argc)
+      args.graph = argv[++i];
+    else if (arg == "--inputs" && i + 1 < argc)
+      args.inputs = argv[++i];
+    else if (arg == "--plugin" && i + 1 < argc)
+      args.plugin = argv[++i];
+    else if (arg == "--output-dir" && i + 1 < argc)
+      args.output_dir = argv[++i];
+    else
+      throw std::invalid_argument(
+          "usage: dli_operator_engine_runner --graph path --inputs path --plugin path --output-dir "
+          "path");
   }
   if (args.graph.empty() || args.inputs.empty() || args.plugin.empty() || args.output_dir.empty()) {
     throw std::invalid_argument("missing required runner argument");
@@ -41,17 +48,20 @@ Args parseArgs(int argc, char** argv) {
 std::string escapeJson(const std::string& value) {
   std::string out;
   for (const char c : value) {
-    if (c == '"') out += "\\\"";
-    else if (c == '\\') out += "\\\\";
-    else out.push_back(c);
+    if (c == '"')
+      out += "\\\"";
+    else if (c == '\\')
+      out += "\\\\";
+    else
+      out.push_back(c);
   }
   return out;
 }
 
 std::string outputFileName(const std::string& name) {
   for (const char c : name) {
-    const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                    (c >= '0' && c <= '9') || c == '_' || c == '-';
+    const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                    c == '_' || c == '-';
     if (!ok) throw std::invalid_argument("unsupported output tensor name: " + name);
   }
   return name + ".bin";
@@ -60,7 +70,8 @@ std::string outputFileName(const std::string& name) {
 std::vector<std::byte> tensorBytes(const dli::Tensor& tensor) {
   std::vector<std::byte> bytes(tensor.nbytes());
   if (tensor.isCuda()) {
-    dli::cudaMemcpyBytes(bytes.data(), tensor.deviceData(), bytes.size(), dli::CudaMemcpyKind::DeviceToHost);
+    dli::cudaMemcpyBytes(bytes.data(), tensor.deviceData(), bytes.size(),
+                         dli::CudaMemcpyKind::DeviceToHost);
   } else {
     const void* source = tensor.dtype() == dli::DType::Float32
                              ? static_cast<const void*>(tensor.data<float>())
@@ -73,7 +84,9 @@ std::vector<std::byte> tensorBytes(const dli::Tensor& tensor) {
 void writeBytes(const std::filesystem::path& path, const std::vector<std::byte>& bytes) {
   std::ofstream file(path, std::ios::binary);
   if (!file) throw std::runtime_error("failed to open output file: " + path.string());
-  if (!bytes.empty()) file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+  if (!bytes.empty())
+    file.write(reinterpret_cast<const char*>(bytes.data()),
+               static_cast<std::streamsize>(bytes.size()));
 }
 
 void writeManifest(const std::filesystem::path& path,
@@ -111,7 +124,8 @@ int main(int argc, char** argv) {
     for (const auto& name : graph.outputs) {
       auto it = result.find(name);
       if (it == result.end()) throw std::runtime_error("missing graph output: " + name);
-      writeBytes(std::filesystem::path(args.output_dir) / outputFileName(name), tensorBytes(it->second));
+      writeBytes(std::filesystem::path(args.output_dir) / outputFileName(name),
+                 tensorBytes(it->second));
       ordered.emplace_back(name, it->second);
     }
     writeManifest(std::filesystem::path(args.output_dir) / "outputs.json", ordered);

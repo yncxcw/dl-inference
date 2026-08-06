@@ -9,9 +9,9 @@
 
 namespace dli {
 
-using AttributeValue = std::variant<std::int64_t, double, bool, std::string,
-                                    std::vector<std::int64_t>, std::vector<double>,
-                                    std::vector<std::string>>;
+using AttributeValue =
+    std::variant<std::int64_t, double, bool, std::string, std::vector<std::int64_t>,
+                 std::vector<double>, std::vector<std::string>>;
 
 class Attributes {
  public:

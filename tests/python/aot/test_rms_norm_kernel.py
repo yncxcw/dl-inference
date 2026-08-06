@@ -10,4 +10,3 @@ def test_rms_norm_kernel_signature() -> None:
 
 if __name__ == "__main__":
     test_rms_norm_kernel_signature()
-

@@ -33,7 +33,8 @@ struct Runtime {
     malloc_fn = reinterpret_cast<CudaMallocFn>(dlsym(handle, "cudaMalloc"));
     free_fn = reinterpret_cast<CudaFreeFn>(dlsym(handle, "cudaFree"));
     memcpy_fn = reinterpret_cast<CudaMemcpyFn>(dlsym(handle, "cudaMemcpy"));
-    get_error_string_fn = reinterpret_cast<CudaGetErrorStringFn>(dlsym(handle, "cudaGetErrorString"));
+    get_error_string_fn =
+        reinterpret_cast<CudaGetErrorStringFn>(dlsym(handle, "cudaGetErrorString"));
     if (malloc_fn == nullptr || free_fn == nullptr || memcpy_fn == nullptr ||
         get_error_string_fn == nullptr) {
       load_error = "libcudart is missing required symbols";
@@ -66,16 +67,13 @@ void requireCuda(CudaError error, const char* operation) {
 
 }  // namespace
 
-bool cudaRuntimeAvailable() {
-  return runtime().handle != nullptr;
-}
+bool cudaRuntimeAvailable() { return runtime().handle != nullptr; }
 
-std::string cudaRuntimeError() {
-  return runtime().load_error;
-}
+std::string cudaRuntimeError() { return runtime().load_error; }
 
 void* cudaMallocBytes(std::size_t bytes) {
-  if (!cudaRuntimeAvailable()) throw std::runtime_error("CUDA runtime is unavailable: " + cudaRuntimeError());
+  if (!cudaRuntimeAvailable())
+    throw std::runtime_error("CUDA runtime is unavailable: " + cudaRuntimeError());
   void* pointer = nullptr;
   requireCuda(runtime().malloc_fn(&pointer, bytes), "cudaMalloc");
   return pointer;
@@ -87,7 +85,8 @@ void cudaFreePointer(void* pointer) noexcept {
 }
 
 void cudaMemcpyBytes(void* dst, const void* src, std::size_t bytes, CudaMemcpyKind kind) {
-  if (!cudaRuntimeAvailable()) throw std::runtime_error("CUDA runtime is unavailable: " + cudaRuntimeError());
+  if (!cudaRuntimeAvailable())
+    throw std::runtime_error("CUDA runtime is unavailable: " + cudaRuntimeError());
   requireCuda(runtime().memcpy_fn(dst, src, bytes, static_cast<int>(kind)), "cudaMemcpy");
 }
 

@@ -45,7 +45,11 @@ def _write_weights(path: Path, tensors: dict[str, torch.Tensor]) -> Path:
     data_path = path / "inputs.bin"
     manifest_path = path / "inputs.json"
     offset = 0
-    manifest: dict[str, object] = {"format": "dli.weights.v1", "data": data_path.name, "tensors": {}}
+    manifest: dict[str, object] = {
+        "format": "dli.weights.v1",
+        "data": data_path.name,
+        "tensors": {},
+    }
     with data_path.open("wb") as data:
         for name, tensor in tensors.items():
             host = tensor.detach().cpu().contiguous()
@@ -62,15 +66,28 @@ def _write_weights(path: Path, tensors: dict[str, torch.Tensor]) -> Path:
     return manifest_path
 
 
-def _write_graph(path: Path, op_type: str, inputs: list[str], outputs: list[str],
-                 attrs: dict[str, object] | None = None) -> Path:
+def _write_graph(
+    path: Path,
+    op_type: str,
+    inputs: list[str],
+    outputs: list[str],
+    attrs: dict[str, object] | None = None,
+) -> Path:
     graph_path = path / "graph.json"
     graph = {
         "format": "dli.graph.v1",
         "model_type": "operator_numeric_test",
         "inputs": inputs,
         "outputs": outputs,
-        "nodes": [{"name": op_type, "op": op_type, "inputs": inputs, "outputs": outputs, "attrs": attrs or {}}],
+        "nodes": [
+            {
+                "name": op_type,
+                "op": op_type,
+                "inputs": inputs,
+                "outputs": outputs,
+                "attrs": attrs or {},
+            }
+        ],
     }
     graph_path.write_text(json.dumps(graph, indent=2), encoding="utf-8")
     return graph_path
@@ -82,13 +99,18 @@ def _read_outputs(path: Path) -> dict[str, torch.Tensor]:
     for name, metadata in manifest["tensors"].items():
         dtype = torch.float32 if metadata["dtype"] == "float32" else torch.int64
         data = (path / metadata["file"]).read_bytes()
-        outputs[name] = torch.frombuffer(bytearray(data), dtype=dtype).clone().reshape(metadata["shape"])
+        outputs[name] = (
+            torch.frombuffer(bytearray(data), dtype=dtype).clone().reshape(metadata["shape"])
+        )
     return outputs
 
 
-def run_operator(op_type: str, inputs: dict[str, torch.Tensor],
-                 outputs: list[str] | None = None,
-                 attrs: dict[str, object] | None = None) -> dict[str, torch.Tensor]:
+def run_operator(
+    op_type: str,
+    inputs: dict[str, torch.Tensor],
+    outputs: list[str] | None = None,
+    attrs: dict[str, object] | None = None,
+) -> dict[str, torch.Tensor]:
     outputs = outputs or ["output"]
     with tempfile.TemporaryDirectory(prefix=f"dli_{op_type}_") as temp:
         root = Path(temp)
@@ -96,8 +118,17 @@ def run_operator(op_type: str, inputs: dict[str, torch.Tensor],
         input_path = _write_weights(root, inputs)
         output_dir = root / "out"
         subprocess.run(
-            [str(_runner()), "--graph", str(graph_path), "--inputs", str(input_path),
-             "--plugin", str(_plugin()), "--output-dir", str(output_dir)],
+            [
+                str(_runner()),
+                "--graph",
+                str(graph_path),
+                "--inputs",
+                str(input_path),
+                "--plugin",
+                str(_plugin()),
+                "--output-dir",
+                str(output_dir),
+            ],
             check=True,
             text=True,
             stdout=subprocess.PIPE,

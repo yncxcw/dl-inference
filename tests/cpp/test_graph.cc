@@ -1,10 +1,9 @@
-#include "test_support.h"
-
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "dli/graph.h"
+#include "test_support.h"
 
 int main() {
   return dli_test::run("Graph", [] {
@@ -35,16 +34,16 @@ int main() {
     dli_test::expect(graph.nodes.size() == 1, "graph node count");
     dli_test::expect(graph.nodes[0].op_type == "aten", "graph op_type alias");
     dli_test::expect(graph.nodes[0].attributes.require<bool>("flag"), "graph bool attr");
-    dli_test::expect(graph.nodes[0].attributes.require<std::int64_t>("int") == 2,
-                     "graph int attr");
+    dli_test::expect(graph.nodes[0].attributes.require<std::int64_t>("int") == 2, "graph int attr");
     dli_test::expect(graph.nodes[0].attributes.require<double>("number") == 1.5,
                      "graph number attr");
     dli_test::expect(graph.nodes[0].attributes.require<std::vector<std::int64_t>>("ints")[1] == 2,
                      "graph ints attr");
     dli_test::expect(graph.nodes[0].attributes.require<std::vector<double>>("numbers")[1] == 2.5,
                      "graph numbers attr");
-    dli_test::expect(graph.nodes[0].attributes.require<std::vector<std::string>>("strings")[0] == "a",
-                     "graph strings attr");
+    dli_test::expect(
+        graph.nodes[0].attributes.require<std::vector<std::string>>("strings")[0] == "a",
+        "graph strings attr");
 
     const auto roundtrip = dli::Graph::fromJson(graph.toJson());
     dli_test::expect(roundtrip.nodes[0].attributes.require<std::string>("name") == "aten::relu",
@@ -55,4 +54,3 @@ int main() {
                            "missing graph nodes should throw");
   });
 }
-

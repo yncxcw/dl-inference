@@ -1,11 +1,10 @@
-#include "test_support.h"
-
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <vector>
 
 #include "dli/weights.h"
+#include "test_support.h"
 
 int main() {
   return dli_test::run("weights", [] {
@@ -22,7 +21,8 @@ int main() {
       std::ofstream manifest(manifest_path);
       manifest << R"({
   "format": "dli.weights.v1",
-  "data": ")" << bin_path.filename().string() << R"(",
+  "data": ")" << bin_path.filename().string()
+               << R"(",
   "tensors": {
     "linear.weight": {"dtype": "float32", "shape": [2, 2], "offset": 0, "nbytes": 16},
     "ids": {"dtype": "int64", "shape": [2], "offset": 16, "nbytes": 16}
