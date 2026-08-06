@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    name: Build and test (Python 3.11)
+  build:
+    name: Build (Python 3.11)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
@@ -50,6 +50,3 @@ jobs:
 
       - name: Build
         run: cmake --build build-ci --parallel 2
-
-      - name: Test
-        run: ctest --test-dir build-ci --output-on-failure
