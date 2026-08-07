@@ -60,13 +60,21 @@ def test_export_batch_norm2d_fx_graph() -> None:
     model = BatchNorm2dModel().eval()
     with tempfile.TemporaryDirectory() as tmp:
         graph_path, weights_path = export_module(
-            model, (torch.zeros(2, 3, 4, 5),), tmp, model_type="batch_norm2d_test", stem="batch_norm2d"
+            model,
+            (torch.zeros(2, 3, 4, 5),),
+            tmp,
+            model_type="batch_norm2d_test",
+            stem="batch_norm2d",
         )
         graph = json.loads(Path(graph_path).read_text(encoding="utf-8"))
         node = graph["nodes"][0]
         assert node["op"] == "batch_norm2d"
         assert node["inputs"] == [
-            "x", "norm.weight", "norm.bias", "norm.running_mean", "norm.running_var"
+            "x",
+            "norm.weight",
+            "norm.bias",
+            "norm.running_mean",
+            "norm.running_var",
         ]
         assert node["attrs"] == {"eps": 1e-4}
         manifest = json.loads(Path(weights_path).read_text(encoding="utf-8"))

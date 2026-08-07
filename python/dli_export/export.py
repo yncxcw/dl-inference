@@ -96,11 +96,21 @@ def _export_fx(
                 _node(nodes, fx_node.name, "linear", inputs, [out])
             elif isinstance(module, torch.nn.BatchNorm2d):
                 if module.training or not module.track_running_stats:
-                    raise ExportError("BatchNorm2d export requires eval mode and tracked running statistics")
+                    raise ExportError(
+                        "BatchNorm2d export requires eval mode and tracked running statistics"
+                    )
                 if module.running_mean is None or module.running_var is None:
                     raise ExportError("BatchNorm2d export requires running_mean and running_var")
-                weight = module.weight if module.weight is not None else torch.ones_like(module.running_mean)
-                bias = module.bias if module.bias is not None else torch.zeros_like(module.running_mean)
+                weight = (
+                    module.weight
+                    if module.weight is not None
+                    else torch.ones_like(module.running_mean)
+                )
+                bias = (
+                    module.bias
+                    if module.bias is not None
+                    else torch.zeros_like(module.running_mean)
+                )
                 inputs = [
                     x,
                     add_param(f"{fx_node.target}.weight", weight),
@@ -108,7 +118,9 @@ def _export_fx(
                     add_param(f"{fx_node.target}.running_mean", module.running_mean),
                     add_param(f"{fx_node.target}.running_var", module.running_var),
                 ]
-                _node(nodes, fx_node.name, "batch_norm2d", inputs, [out], {"eps": float(module.eps)})
+                _node(
+                    nodes, fx_node.name, "batch_norm2d", inputs, [out], {"eps": float(module.eps)}
+                )
             elif isinstance(module, torch.nn.Conv2d):
                 w = add_param(f"{fx_node.target}.weight", module.weight)
                 inputs = [x, w]
