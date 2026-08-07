@@ -94,7 +94,7 @@ Format all tracked Python and C++ source files before submitting changes:
 ./format
 ```
 
-The script requires Black 24.10.0 and clang-format 18. CI runs the equivalent
+The script requires Black 24.10.0 and clang-format 18.1.5. CI runs the equivalent
 non-mutating check with `./format --check`. AOT `template.cc` files are excluded
 because their `{{HASH_*}}` substitution tokens are not valid C++ until the AOT
 generator renders them.

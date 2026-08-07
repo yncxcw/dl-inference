@@ -3,8 +3,19 @@ import triton.language as tl
 
 
 @triton.jit
-def batch_norm2d_kernel(x, weight, bias, running_mean, running_var, out,
-                        total, channels, spatial, eps, BLOCK: tl.constexpr):
+def batch_norm2d_kernel(
+    x,
+    weight,
+    bias,
+    running_mean,
+    running_var,
+    out,
+    total,
+    channels,
+    spatial,
+    eps,
+    BLOCK: tl.constexpr,
+):
     offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = offs < total
     channel = (offs // spatial) % channels
