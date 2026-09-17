@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <mutex>
 #include <string>
 
 namespace dli {
@@ -27,6 +28,7 @@ class CudaAotKernel {
   const unsigned char* cubin_;
   std::size_t cubin_size_;
   unsigned shared_memory_bytes_;
+  std::once_flag load_once_;
   void* module_ = nullptr;
   void* function_ = nullptr;
 };

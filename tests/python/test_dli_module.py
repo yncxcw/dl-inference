@@ -59,6 +59,32 @@ def test_python_graph_round_trip() -> None:
     assert parsed["inputs"] == ["x"]
 
 
+def test_python_execution_state_lifecycle() -> None:
+    state = dli.ExecutionState()
+    assert state.cache_size == 0
+    assert state.tensor_count == 0
+    state.reset()
+
+    engine = dli.Engine()
+    assert engine.cache_size == 0
+    graph = dli.Graph.from_json(
+        json.dumps(
+            {
+                "format": "dli.graph.v1",
+                "model_type": "state_binding_test",
+                "inputs": ["x"],
+                "outputs": ["x"],
+                "nodes": [],
+            }
+        )
+    )
+    x = torch.tensor([1.0])
+    outputs = engine.run(graph, {"x": x}, state=state, position_offset=4)
+    torch.testing.assert_close(outputs["x"], x)
+    engine.reset()
+
+
 if __name__ == "__main__":
     test_python_engine_runs_aten_graph()
     test_python_graph_round_trip()
+    test_python_execution_state_lifecycle()

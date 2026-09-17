@@ -42,6 +42,7 @@ add_library(dli_core SHARED
   src/cuda_driver.cc
   src/cuda_runtime.cc
   src/engine.cc
+  src/execution_state.cc
   src/graph.cc
   src/kv_cache.cc
   src/logging.cc
@@ -83,21 +84,27 @@ if(DLI_BUILD_PYTHON_BINDINGS)
     message(FATAL_ERROR "DLI_BUILD_PYTHON_BINDINGS requires libtorch_python from the installed PyTorch package")
   endif()
 
+  set(DLI_PYTHON_PACKAGE_DIR ${CMAKE_CURRENT_BINARY_DIR}/python/dli)
+  file(MAKE_DIRECTORY ${DLI_PYTHON_PACKAGE_DIR})
+  configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/python/dli/__init__.py
+    ${DLI_PYTHON_PACKAGE_DIR}/__init__.py
+    COPYONLY
+  )
+  configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/python/dli/generation.py
+    ${DLI_PYTHON_PACKAGE_DIR}/generation.py
+    COPYONLY
+  )
+
   Python3_add_library(_dli_native MODULE src/python_bindings.cc WITH_SOABI)
   target_link_libraries(_dli_native PRIVATE dli_core ${TORCH_PYTHON_LIBRARY})
   target_include_directories(_dli_native PRIVATE ${TORCH_INCLUDE_DIRS})
   target_compile_features(_dli_native PRIVATE cxx_std_20)
   set_target_properties(_dli_native PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/python/dli
+    LIBRARY_OUTPUT_DIRECTORY ${DLI_PYTHON_PACKAGE_DIR}
     BUILD_RPATH "$<TARGET_FILE_DIR:dli_core>;${DLI_TORCH_PACKAGE_DIR}/lib"
     INSTALL_RPATH "$ORIGIN;$ORIGIN/../torch/lib"
-  )
-  add_custom_command(TARGET _dli_native POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/python/dli
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      ${CMAKE_CURRENT_SOURCE_DIR}/python/dli/__init__.py
-      ${CMAKE_CURRENT_BINARY_DIR}/python/dli/__init__.py
-    VERBATIM
   )
 
   install(TARGETS dli_core _dli_native
@@ -257,7 +264,7 @@ if(DLI_BUILD_TESTS)
 
   if(Python3_Interpreter_FOUND)
     set(DLI_PYTHON_MODULE_PATH
-      "${CMAKE_CURRENT_SOURCE_DIR}/tests/python:${CMAKE_CURRENT_SOURCE_DIR}/python:${CMAKE_CURRENT_SOURCE_DIR}/examples/alexnet:${CMAKE_CURRENT_SOURCE_DIR}/examples/qwen2"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/python:${CMAKE_CURRENT_SOURCE_DIR}/python:${CMAKE_CURRENT_SOURCE_DIR}/examples/alexnet:${CMAKE_CURRENT_SOURCE_DIR}/examples/qwen2:${CMAKE_CURRENT_SOURCE_DIR}/examples/qwen3_5"
     )
     set(DLI_PYTHON_NATIVE_PATH
       "${CMAKE_CURRENT_BINARY_DIR}/python:${DLI_PYTHON_MODULE_PATH}"
@@ -280,6 +287,7 @@ if(DLI_BUILD_TESTS)
     dli_add_python_module_test(dli_py_dli_export_export tests/python/test_dli_export_export.py)
     dli_add_python_module_test(dli_py_dli_ops_init tests/python/test_dli_ops_init.py)
     dli_add_python_module_test(dli_py_dli_ops_spec tests/python/test_dli_ops_spec.py)
+    dli_add_python_module_test(dli_py_qwen35_chatbot examples/qwen3_5/test_chatbot.py)
     dli_add_python_module_test(dli_py_dli_ops_aot_init tests/python/test_dli_ops_aot_init.py)
     dli_add_python_module_test(dli_py_aot_add_kernel tests/python/aot/test_add_kernel.py)
     dli_add_python_module_test(dli_py_aot_attention_kernel tests/python/aot/test_attention_kernel.py)
@@ -299,6 +307,14 @@ if(DLI_BUILD_TESTS)
     dli_add_python_module_test(dli_py_aot_transpose_kernel tests/python/aot/test_transpose_kernel.py)
 
     if(TARGET _dli_native)
+      add_test(
+        NAME dli_py_generation
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_generation.py
+      )
+      set_tests_properties(dli_py_generation PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${DLI_PYTHON_NATIVE_PATH};PYTHONDONTWRITEBYTECODE=1"
+      )
+
       add_test(
         NAME dli_py_dli_module
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_dli_module.py

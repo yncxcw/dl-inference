@@ -8,6 +8,8 @@ int main() {
     dli::KVCache cache;
     dli_test::expect(cache.size() == 0, "kv cache starts empty");
     dli_test::expect(cache.get("missing") == nullptr, "kv cache missing entry");
+    dli_test::expect(cache.sequenceLength("missing") == 0,
+                     "missing KV entry has zero sequence length");
     auto key = dli::Tensor(at::zeros({1, 1, 1, 2}, at::TensorOptions().dtype(at::kFloat)));
     auto value = dli::Tensor(at::zeros({1, 1, 1, 2}, at::TensorOptions().dtype(at::kFloat)));
     dli_test::expectThrows([&] { cache.append("layer", key, value); },

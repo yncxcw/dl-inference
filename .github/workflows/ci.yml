@@ -71,6 +71,9 @@ jobs:
       - name: Build
         run: cmake --build build-ci --parallel 2
 
+      - name: Test
+        run: ctest --test-dir build-ci --output-on-failure --parallel 2
+
       - name: Build Python wheel
         run: python -m build --wheel --no-isolation
 

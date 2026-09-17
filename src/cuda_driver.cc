@@ -2,6 +2,7 @@
 
 #include <dlfcn.h>
 
+#include <limits>
 #include <stdexcept>
 
 namespace dli {
@@ -17,9 +18,15 @@ using CuInitFn = CUresult (*)(unsigned int);
 using CuModuleLoadDataFn = CUresult (*)(CUmodule*, const void*);
 using CuModuleGetFunctionFn = CUresult (*)(CUfunction*, CUmodule, const char*);
 using CuModuleUnloadFn = CUresult (*)(CUmodule);
+using CuFuncSetAttributeFn = CUresult (*)(CUfunction, int, int);
 using CuLaunchKernelFn = CUresult (*)(CUfunction, unsigned, unsigned, unsigned, unsigned, unsigned,
                                       unsigned, unsigned, CUstream, void**, void**);
 using CuGetErrorStringFn = CUresult (*)(CUresult, const char**);
+
+// CUfunction_attribute is intentionally represented as int so the runtime can
+// keep dynamically loading libcuda without a CUDA SDK header dependency.
+constexpr int kFuncAttributeMaxDynamicSharedSizeBytes = 8;
+constexpr unsigned kDefaultDynamicSharedMemoryLimit = 48 * 1024;
 
 struct Driver {
   void* handle = nullptr;
@@ -27,6 +34,7 @@ struct Driver {
   CuModuleLoadDataFn module_load_data = nullptr;
   CuModuleGetFunctionFn module_get_function = nullptr;
   CuModuleUnloadFn module_unload = nullptr;
+  CuFuncSetAttributeFn func_set_attribute = nullptr;
   CuLaunchKernelFn launch_kernel = nullptr;
   CuGetErrorStringFn get_error_string = nullptr;
   std::string load_error;
@@ -44,10 +52,13 @@ struct Driver {
     module_get_function =
         reinterpret_cast<CuModuleGetFunctionFn>(dlsym(handle, "cuModuleGetFunction"));
     module_unload = reinterpret_cast<CuModuleUnloadFn>(dlsym(handle, "cuModuleUnload"));
+    func_set_attribute =
+        reinterpret_cast<CuFuncSetAttributeFn>(dlsym(handle, "cuFuncSetAttribute"));
     launch_kernel = reinterpret_cast<CuLaunchKernelFn>(dlsym(handle, "cuLaunchKernel"));
     get_error_string = reinterpret_cast<CuGetErrorStringFn>(dlsym(handle, "cuGetErrorString"));
     if (init == nullptr || module_load_data == nullptr || module_get_function == nullptr ||
-        module_unload == nullptr || launch_kernel == nullptr || get_error_string == nullptr) {
+        module_unload == nullptr || func_set_attribute == nullptr || launch_kernel == nullptr ||
+        get_error_string == nullptr) {
       load_error = "libcuda is missing required driver API symbols";
       dlclose(handle);
       handle = nullptr;
@@ -105,17 +116,37 @@ CudaAotKernel::CudaAotKernel(const char* kernel_name, const unsigned char* cubin
 CudaAotKernel::~CudaAotKernel() = default;
 
 void CudaAotKernel::load() {
-  if (function_ != nullptr) return;
-  requireDriver();
-  if (cubin_ == nullptr || cubin_size_ == 0) {
-    throw std::runtime_error(std::string("AOT kernel has no cubin: ") + kernel_name_);
-  }
-  auto& drv = driver();
-  requireSuccess(drv.module_load_data(reinterpret_cast<CUmodule*>(&module_), cubin_),
-                 std::string("cuModuleLoadData(") + kernel_name_ + ")");
-  requireSuccess(drv.module_get_function(reinterpret_cast<CUfunction*>(&function_),
-                                         static_cast<CUmodule>(module_), kernel_name_),
-                 std::string("cuModuleGetFunction(") + kernel_name_ + ")");
+  std::call_once(load_once_, [this] {
+    requireDriver();
+    if (cubin_ == nullptr || cubin_size_ == 0) {
+      throw std::runtime_error(std::string("AOT kernel has no cubin: ") + kernel_name_);
+    }
+    if (shared_memory_bytes_ > static_cast<unsigned>(std::numeric_limits<int>::max())) {
+      throw std::runtime_error(std::string("AOT kernel shared-memory request is too large: ") +
+                               kernel_name_);
+    }
+
+    auto& drv = driver();
+    CUmodule module = nullptr;
+    CUfunction function = nullptr;
+    requireSuccess(drv.module_load_data(&module, cubin_),
+                   std::string("cuModuleLoadData(") + kernel_name_ + ")");
+    try {
+      requireSuccess(drv.module_get_function(&function, module, kernel_name_),
+                     std::string("cuModuleGetFunction(") + kernel_name_ + ")");
+      if (shared_memory_bytes_ > kDefaultDynamicSharedMemoryLimit) {
+        requireSuccess(
+            drv.func_set_attribute(function, kFuncAttributeMaxDynamicSharedSizeBytes,
+                                   static_cast<int>(shared_memory_bytes_)),
+            std::string("cuFuncSetAttribute(MAX_DYNAMIC_SHARED_SIZE_BYTES, ") + kernel_name_ + ")");
+      }
+    } catch (...) {
+      drv.module_unload(module);
+      throw;
+    }
+    module_ = module;
+    function_ = function;
+  });
 }
 
 void CudaAotKernel::launch(void** args, unsigned grid_x, unsigned grid_y, unsigned grid_z,

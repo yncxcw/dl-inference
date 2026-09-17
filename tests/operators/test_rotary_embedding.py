@@ -32,6 +32,31 @@ class RotaryEmbeddingOperatorNumericsTest(unittest.TestCase):
         assert_close(self, outputs["out_q"], rotate(q))
         assert_close(self, outputs["out_k"], rotate(k))
 
+    def test_partial_rotate_half_with_unequal_query_and_kv_heads(self) -> None:
+        q = torch.arange(1 * 8 * 1 * 256, dtype=torch.float32).reshape(1, 8, 1, 256) / 1000
+        k = torch.arange(1 * 2 * 1 * 256, dtype=torch.float32).reshape(1, 2, 1, 256) / 700
+        cos = torch.stack((torch.ones(32), torch.full((32,), 0.5)))
+        sin = torch.stack((torch.zeros(32), torch.full((32,), 0.25)))
+        outputs = run_operator(
+            "rotary_embedding",
+            {"q": q, "k": k, "cos": cos, "sin": sin},
+            outputs=["out_q", "out_k"],
+            attrs={"start_pos": 1},
+        )
+
+        def rotate(x: torch.Tensor) -> torch.Tensor:
+            out = x.clone()
+            first = x[..., :32]
+            second = x[..., 32:64]
+            c = cos[1].reshape(1, 1, 1, 32)
+            s = sin[1].reshape(1, 1, 1, 32)
+            out[..., :32] = first * c - second * s
+            out[..., 32:64] = first * s + second * c
+            return out
+
+        assert_close(self, outputs["out_q"], rotate(q))
+        assert_close(self, outputs["out_k"], rotate(k))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,13 +11,14 @@ bindings are available for launching the same C++ engine from Python.
 ## What Is Included
 
 - C++ tensor, graph, engine, plugin registry, CUDA allocation, CUDA Driver API
-  launcher, weight loading, and KV cache support.
+  launcher, weight loading, and per-request autoregressive execution state.
 - `dli::Tensor` is backed by PyTorch/ATen tensors while preserving
   the runtime-facing `deviceData()` API used by AOT kernels.
 - A generic Triton AOT operator plugin for `dli.graph.v1` graphs.
 - One folder per AOT operator under `python/dli_ops/aot/<operator>/`, each with
   `kernel.py` and `template.cc`.
-- Runnable Python examples for a linear layer, AlexNet-style CNN, and Qwen2.
+- Runnable Python examples for a linear layer, AlexNet-style CNN, Qwen2, and a
+  text-only Qwen3.5 terminal chatbot.
 - Optional gRPC client/server build hooks.
 
 ## Build
@@ -105,9 +106,11 @@ generator renders them.
 python3 examples/operators/linear/main.py
 python3 examples/alexnet/main.py
 python3 examples/qwen2/main.py
+python3 examples/qwen3_5/main.py
 ```
 
-Each example exports its model to `build/examples/<name>` at runtime, loads:
+The DLI-backed examples (linear, AlexNet, and Qwen2) export their model to
+`build/examples/<name>` at runtime and load:
 
 ```text
 build/operators/libdli_triton_aot_ops.so
@@ -116,6 +119,29 @@ build/operators/libdli_triton_aot_ops.so
 through the Python engine binding, and needs a visible NVIDIA GPU compatible
 with the AOT architecture. Use `--export-only` to generate the graph and weights
 without launching GPU inference.
+
+The Qwen3.5 chatbot is a reference frontend backed by the official Transformers
+`Qwen3_5ForCausalLM` implementation. It is usable today without the DLI AOT
+plugin and serves as the parity oracle while native hybrid DeltaNet operators
+are added. See `examples/qwen3_5/README.md` and the staged native design in
+`.codex/autoregressive_chatbot_design.md`.
+
+## Autoregressive Generation
+
+Mutable model state is isolated per conversation with `ExecutionState`:
+
+```python
+state = dli.ExecutionState()
+outputs = engine.run(graph, inputs, state=state, position_offset=0)
+outputs = engine.run(graph, next_inputs, state=state, position_offset=1)
+state.reset()
+```
+
+`dli.EngineCausalLM` adapts an existing single-token causal-LM graph to the
+`prefill`/`decode` contract. `dli.generate_tokens` provides greedy and sampled
+generation with top-k/top-p filtering, stop tokens, deterministic seeds, and a
+context limit. Prompt prefill is currently token-by-token; chunked prefill is a
+future optimization.
 
 ## Python Binding
 

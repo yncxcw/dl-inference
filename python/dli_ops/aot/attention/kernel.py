@@ -10,6 +10,8 @@ def attention_kernel(
     out,
     seq_q: tl.constexpr,
     seq_k: tl.constexpr,
+    q_heads,
+    kv_heads,
     head_dim: tl.constexpr,
     causal: tl.constexpr,
     scale: tl.constexpr,
@@ -22,8 +24,12 @@ def attention_kernel(
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_D)
+    batch = pid_bh // q_heads
+    q_head = pid_bh % q_heads
+    q_heads_per_kv_head = q_heads // kv_heads
+    kv_head = q_head // q_heads_per_kv_head
     q_base = pid_bh * seq_q * head_dim
-    kv_base = pid_bh * seq_k * head_dim
+    kv_base = (batch * kv_heads + kv_head) * seq_k * head_dim
     q_block = tl.load(
         q + q_base + offs_m[:, None] * head_dim + offs_d[None, :],
         mask=(offs_m[:, None] < seq_q) & (offs_d[None, :] < head_dim),
@@ -46,6 +52,7 @@ def attention_kernel(
             other=0.0,
         )
         scores = tl.dot(q_block, k_block) * scale
+        scores = tl.where(n[None, :] < seq_k, scores, -float("inf"))
         if causal:
             scores = tl.where(n[None, :] <= past + offs_m[:, None], scores, -float("inf"))
         m_next = tl.maximum(m_i, tl.max(scores, axis=1))
