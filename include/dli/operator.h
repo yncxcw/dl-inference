@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -7,13 +8,19 @@
 #include <vector>
 
 #include "dli/attributes.h"
+#include "dli/execution_state.h"
 #include "dli/kv_cache.h"
 #include "dli/tensor.h"
 
 namespace dli {
 
 struct ExecutionContext {
+  // Keep the legacy cache pointer first so existing operator plugins continue
+  // to see the field at the ABI-stable offset while newer plugins can use the
+  // full execution state.
   KVCache* kv_cache = nullptr;
+  ExecutionState* state = nullptr;
+  std::int64_t position_offset = 0;
 };
 
 class Operator {

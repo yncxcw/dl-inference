@@ -6,7 +6,8 @@ from test_support import assert_kernel_args
 
 def test_rotary_kernel_signature() -> None:
     assert_kernel_args(
-        kernel.rotary_kernel, ["q", "k", "cos", "sin", "out_q", "out_k", "total_pairs"]
+        kernel.rotary_kernel,
+        ["q", "k", "cos", "sin", "out_q", "out_k", "q_total_pairs", "k_total_pairs"],
     )
 
 

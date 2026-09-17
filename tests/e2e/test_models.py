@@ -62,13 +62,32 @@ def test_qwen2() -> None:
     from qwen2 import create_model
 
     model = create_model().eval()
-    input_ids = torch.tensor([2], dtype=torch.int64)
     with tempfile.TemporaryDirectory(prefix="dli_e2e_qwen2_") as tmp:
         graph_path, weights_path = export_module(model, (), tmp, model_type="qwen2", stem="qwen2")
         model.cuda()
-        expected = model(input_ids.reshape(1, 1).cuda()).logits[:, -1, :]
-        actual = _run_graph(graph_path, weights_path, {"input_ids": input_ids.cuda()})["logits"]
-        _assert_close(actual, expected)
+        engine = dli.Engine()
+        engine.load_library(str(_plugin()))
+        state = dli.ExecutionState()
+        graph = dli.Graph.from_json_file(str(graph_path))
+        inputs = dli.load_weights(str(weights_path), "cuda")
+        past_key_values = None
+
+        # Four steps exercise absolute rotary positions, multiple heads, cache
+        # layout, and a sequence length that was not an old fixed AOT shape.
+        for position, token_id in enumerate((2, 3, 4, 5)):
+            input_ids = torch.tensor([[token_id]], dtype=torch.int64, device="cuda")
+            reference = model(input_ids, past_key_values=past_key_values, use_cache=True)
+            past_key_values = reference.past_key_values
+            expected = reference.logits[:, -1, :]
+
+            inputs["input_ids"] = input_ids.flatten()
+            actual = engine.run(
+                graph,
+                inputs,
+                state=state,
+                position_offset=position,
+            )["logits"]
+            _assert_close(actual, expected)
 
 
 def main() -> int:

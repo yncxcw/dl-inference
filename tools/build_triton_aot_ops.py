@@ -270,16 +270,37 @@ def default_specs() -> list[AotSpec]:
                 ),
             )
         )
-    attention_shapes = [
-        (1, 1, 2),
-        (1, 2, 2),
-        (2, 2, 2),
-        (1, 1, 128),
-        (1, 128, 128),
-        (1, 512, 128),
-        (1, 2048, 128),
-        (128, 128, 128),
-    ]
+    # Single-token decode keeps sequence lengths as runtime values so the same
+    # AOT kernel can consume every cache length. Multi-token prefill remains a
+    # separately specialized path for now.
+    for head_dim in (2, 128, 256):
+        for causal in (0, 1):
+            scale = 1.0 / (head_dim**0.5)
+            block_d = max(16, 1 << (head_dim - 1).bit_length())
+            specs.append(
+                AotSpec(
+                    f"attention_decode_d{head_dim}_c{causal}",
+                    "attention",
+                    "attention_kernel",
+                    (
+                        "*fp32",
+                        "*fp32",
+                        "*fp32",
+                        "*fp32",
+                        "i32",
+                        "i32",
+                        "i32",
+                        "i32",
+                        str(head_dim),
+                        str(causal),
+                        repr(scale),
+                        "16",
+                        "16",
+                        str(block_d),
+                    ),
+                )
+            )
+    attention_shapes = [(2, 2, 2), (128, 128, 128)]
     for seq_q, seq_k, head_dim in attention_shapes:
         for causal in (0, 1):
             scale = 1.0 / (head_dim**0.5)
@@ -296,6 +317,8 @@ def default_specs() -> list[AotSpec]:
                         "*fp32",
                         str(seq_q),
                         str(seq_k),
+                        "i32",
+                        "i32",
                         str(head_dim),
                         str(causal),
                         repr(scale),
@@ -305,7 +328,13 @@ def default_specs() -> list[AotSpec]:
                     ),
                 )
             )
-    for head_dim, seq, pairs in ((2, 1, 1), (2, 2, 1), (128, 1, 64), (128, 128, 64)):
+    for head_dim, seq, pairs in (
+        (2, 1, 1),
+        (2, 2, 1),
+        (128, 1, 64),
+        (128, 128, 64),
+        (256, 1, 32),
+    ):
         specs.append(
             AotSpec(
                 f"rotary_d{head_dim}_s{seq}_p{pairs}",
@@ -318,6 +347,7 @@ def default_specs() -> list[AotSpec]:
                     "*fp32",
                     "*fp32",
                     "*fp32",
+                    "i32",
                     "i32",
                     "i32",
                     str(head_dim),
@@ -381,6 +411,7 @@ CPP_TEMPLATE = r"""
 #include "dli/utils.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>

@@ -6,7 +6,8 @@ from test_support import assert_kernel_args
 
 def test_attention_kernel_signature() -> None:
     assert_kernel_args(
-        kernel.attention_kernel, ["q", "k", "v", "out", "seq_q", "seq_k", "head_dim"]
+        kernel.attention_kernel,
+        ["q", "k", "v", "out", "seq_q", "seq_k", "q_heads", "kv_heads", "head_dim"],
     )
 
 

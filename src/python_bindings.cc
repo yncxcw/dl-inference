@@ -35,10 +35,12 @@ py::dict tensorMapToPython(const TensorMap& tensors) {
   return result;
 }
 
-TensorMap runGraph(Engine& engine, const Graph& graph, const py::dict& inputs) {
+TensorMap runGraph(Engine& engine, const Graph& graph, const py::dict& inputs,
+                   ExecutionState* state, std::int64_t position_offset) {
   auto tensor_inputs = tensorMapFromPython(inputs);
   py::gil_scoped_release release;
-  return engine.run(graph, std::move(tensor_inputs));
+  return engine.run(graph, std::move(tensor_inputs),
+                    {.state = state, .position_offset = position_offset});
 }
 
 DeviceType parseDevice(const std::string& device) { return deviceFromString(device); }
@@ -60,6 +62,13 @@ PYBIND11_MODULE(_dli_native, m) {
       .def_readwrite("inputs", &dli::Graph::inputs)
       .def_readwrite("outputs", &dli::Graph::outputs);
 
+  py::class_<dli::ExecutionState>(m, "ExecutionState")
+      .def(py::init<>())
+      .def("reset", &dli::ExecutionState::reset)
+      .def_property_readonly(
+          "cache_size", [](const dli::ExecutionState& state) { return state.kvCache().size(); })
+      .def_property_readonly("tensor_count", &dli::ExecutionState::tensorCount);
+
   py::class_<dli::Engine>(m, "Engine")
       .def(py::init<>())
       .def(
@@ -71,10 +80,16 @@ PYBIND11_MODULE(_dli_native, m) {
           py::arg("path"), py::return_value_policy::reference_internal)
       .def(
           "run",
-          [](dli::Engine& engine, const dli::Graph& graph, const py::dict& inputs) {
-            return dli::tensorMapToPython(dli::runGraph(engine, graph, inputs));
+          [](dli::Engine& engine, const dli::Graph& graph, const py::dict& inputs,
+             dli::ExecutionState* state, std::int64_t position_offset) {
+            return dli::tensorMapToPython(
+                dli::runGraph(engine, graph, inputs, state, position_offset));
           },
-          py::arg("graph"), py::arg("inputs"));
+          py::arg("graph"), py::arg("inputs"), py::arg("state") = nullptr,
+          py::arg("position_offset") = 0)
+      .def("reset", &dli::Engine::reset)
+      .def_property_readonly("cache_size",
+                             [](const dli::Engine& engine) { return engine.kvCache().size(); });
 
   m.def(
       "load_weights",

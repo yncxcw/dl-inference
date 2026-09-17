@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -61,6 +62,35 @@ int main(int argc, char** argv) {
         dli_test::expect(registry.contains(type),
                          "Triton plugin did not register operator: " + type);
       }
+
+      auto attention = registry.create("attention");
+      dli::KVCache cache;
+      dli::ExecutionContext context;
+      context.kv_cache = &cache;
+      dli::Attributes attrs;
+      attrs.set("kv_cache", std::string("shape_validation"));
+      auto* fake_device_pointer = reinterpret_cast<void*>(static_cast<std::uintptr_t>(1));
+      const auto expectRejectedWithoutCacheMutation =
+          [&](const std::vector<std::int64_t>& q_shape, const std::vector<std::int64_t>& k_shape,
+              const std::vector<std::int64_t>& v_shape, const std::string& message) {
+            auto q = dli::Tensor::externalCuda(dli::DType::Float32, q_shape, fake_device_pointer);
+            auto k = dli::Tensor::externalCuda(dli::DType::Float32, k_shape, fake_device_pointer);
+            auto v = dli::Tensor::externalCuda(dli::DType::Float32, v_shape, fake_device_pointer);
+            dli::Tensor output;
+            dli_test::expectThrows(
+                [&] { attention->compute({&q, &k, &v}, {&output}, attrs, context); }, message);
+            dli_test::expect(cache.size() == 0, message + " must not mutate the KV cache");
+          };
+      expectRejectedWithoutCacheMutation({2, 8, 1, 2}, {1, 2, 1, 2}, {1, 2, 1, 2},
+                                         "attention batch mismatch");
+      expectRejectedWithoutCacheMutation({1, 7, 1, 2}, {1, 2, 1, 2}, {1, 2, 1, 2},
+                                         "attention non-integral GQA ratio");
+      expectRejectedWithoutCacheMutation({1, 8, 1, 4}, {1, 2, 1, 2}, {1, 2, 1, 2},
+                                         "attention head-dimension mismatch");
+      expectRejectedWithoutCacheMutation({1, 8, 1, 2}, {1, 2, 1, 2}, {1, 2, 2, 2},
+                                         "attention key/value mismatch");
+      expectRejectedWithoutCacheMutation({1, 8, 3, 2}, {1, 2, 3, 2}, {1, 2, 3, 2},
+                                         "unsupported attention specialization");
     }
   });
 }
