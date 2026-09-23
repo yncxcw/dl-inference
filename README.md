@@ -5,8 +5,9 @@ Python/Triton source at build time, ahead-of-time compiled to cubins, embedded
 into a native `.so`, and loaded by the runtime with `dlopen`.
 
 The C++ inference engine and AOT plugin do not start Python, import Python
-modules, link `libpython`, or use CPU fallback kernels. Optional Python
-bindings are available for launching the same C++ engine from Python.
+modules, or link `libpython`. A generic graph node can dispatch linked ATen
+operators on CPU or CUDA; Triton AOT nodes remain native CUDA launches.
+Optional Python bindings launch the same C++ engine from Python.
 
 ## What Is Included
 
@@ -106,7 +107,6 @@ generator renders them.
 python3 examples/operators/linear/main.py
 python3 examples/alexnet/main.py
 python3 examples/qwen2/main.py
-python3 examples/qwen3_5/main.py
 ```
 
 The DLI-backed examples (linear, AlexNet, and Qwen2) export their model to
@@ -120,11 +120,24 @@ through the Python engine binding, and needs a visible NVIDIA GPU compatible
 with the AOT architecture. Use `--export-only` to generate the graph and weights
 without launching GPU inference.
 
-The Qwen3.5 chatbot is a reference frontend backed by the official Transformers
-`Qwen3_5ForCausalLM` implementation. It is usable today without the DLI AOT
-plugin and serves as the parity oracle while native hybrid DeltaNet operators
-are added. See `examples/qwen3_5/README.md` and the staged native design in
-`.codex/autoregressive_chatbot_design.md`.
+Qwen3.5 uses a separate export step because its FP32 weights are large. The
+exporter captures one fixed-shape recurrent PyTorch/FX program, lowers its
+ordinary ATen nodes into a DLI graph, and writes the explicit cache
+initializers and model weights:
+
+```bash
+PYTHONPATH=python python3 -m dli_export.qwen3_5 \
+  --model-id Qwen/Qwen3.5-0.8B \
+  --output-dir build/examples/qwen3_5 \
+  --max-context-tokens 4096
+
+PYTHONPATH=build/python:python python3 examples/qwen3_5/main.py \
+  --artifacts build/examples/qwen3_5/qwen3_5.dli.bundle.json
+```
+
+The chatbot uses Transformers for tokenization only. Every model forward runs
+through `dli.Engine`; no Qwen-specific C++ operator is registered. See
+`examples/qwen3_5/README.md` and `.codex/autoregressive_chatbot_design.md`.
 
 ## Autoregressive Generation
 
@@ -137,11 +150,14 @@ outputs = engine.run(graph, next_inputs, state=state, position_offset=1)
 state.reset()
 ```
 
-`dli.EngineCausalLM` adapts an existing single-token causal-LM graph to the
-`prefill`/`decode` contract. `dli.generate_tokens` provides greedy and sampled
-generation with top-k/top-p filtering, stop tokens, deterministic seeds, and a
-context limit. Prompt prefill is currently token-by-token; chunked prefill is a
-future optimization.
+`dli.EngineCausalLM` adapts fixed one-token causal-LM graphs to the
+`prefill`/`decode` contract. Qwen3.5 uses the same recurrent graph for both:
+prefill resets and seeds explicit zero state before folding the prompt, while
+decode advances that state for generated tokens. The adapter can also accept a
+distinct future prefill graph. `dli.generate_tokens` provides generation with
+top-k/top-p filtering, stop tokens, deterministic seeds, and a context limit.
+Prompt prefill is currently token-by-token; chunked prefill is a future
+optimization.
 
 ## Python Binding
 
@@ -225,8 +241,11 @@ The engine is model-agnostic. Exporters produce graph and weight files; the
 engine resolves tensor names, creates operators by string type, and launches GPU
 kernels through the loaded plugin.
 
-The generic PyTorch exporter lives in `python/dli_export/`. It supports a small
-FX path for common CNN/MLP layers and an architecture lowering path for Qwen2.
+The generic PyTorch exporter lives in `python/dli_export/`. In addition to the
+small symbolic-FX path for common CNN/MLP layers and the legacy Qwen2 lowering,
+`exported_program_to_dli` converts fixed-shape `torch.export.ExportedProgram`
+FX graphs into generic DLI `aten` nodes. It preserves explicit tensor state
+edges and can share one weight manifest across graph conversions.
 
 Example:
 

@@ -227,6 +227,16 @@ std::vector<std::string> asStringArray(const JsonValue& value, const std::string
   return result;
 }
 
+std::map<std::string, std::string> asStringMap(const JsonValue& value, const std::string& field) {
+  if (value.type != JsonValue::Type::Object)
+    throw std::invalid_argument("JSON field must be string map: " + field);
+  std::map<std::string, std::string> result;
+  for (const auto& [name, item] : value.object_value) {
+    result.emplace(name, asString(item, field));
+  }
+  return result;
+}
+
 AttributeValue toAttributeValue(const JsonValue& value) {
   switch (value.type) {
     case JsonValue::Type::Bool:
@@ -296,6 +306,16 @@ void appendStringArray(std::ostringstream& out, const std::vector<std::string>& 
   out << ']';
 }
 
+void appendStringMap(std::ostringstream& out, const std::map<std::string, std::string>& values) {
+  out << '{';
+  std::size_t index = 0;
+  for (const auto& [name, value] : values) {
+    if (index++ != 0) out << ',';
+    out << '"' << escapeJson(name) << "\":\"" << escapeJson(value) << '"';
+  }
+  out << '}';
+}
+
 void appendAttributeValue(std::ostringstream& out, const AttributeValue& value) {
   std::visit(
       [&](const auto& item) {
@@ -341,6 +361,12 @@ Graph Graph::fromJson(const std::string& json) {
     graph.inputs = asStringArray(*inputs, "inputs");
   if (const auto* outputs = optionalField(root, "outputs"))
     graph.outputs = asStringArray(*outputs, "outputs");
+  if (const auto* state_inputs = optionalField(root, "state_inputs"))
+    graph.state_inputs = asStringMap(*state_inputs, "state_inputs");
+  if (const auto* state_outputs = optionalField(root, "state_outputs"))
+    graph.state_outputs = asStringMap(*state_outputs, "state_outputs");
+  if (const auto* state_initializers = optionalField(root, "state_initializers"))
+    graph.state_initializers = asStringMap(*state_initializers, "state_initializers");
 
   const auto& nodes_json = requireField(root, "nodes");
   if (nodes_json.type != JsonValue::Type::Array)
@@ -385,6 +411,12 @@ std::string Graph::toJson() const {
   appendStringArray(out, inputs);
   out << ",\n  \"outputs\":";
   appendStringArray(out, outputs);
+  out << ",\n  \"state_inputs\":";
+  appendStringMap(out, state_inputs);
+  out << ",\n  \"state_outputs\":";
+  appendStringMap(out, state_outputs);
+  out << ",\n  \"state_initializers\":";
+  appendStringMap(out, state_initializers);
   out << ",\n  \"nodes\":[\n";
   for (std::size_t i = 0; i < nodes.size(); ++i) {
     const auto& node = nodes[i];

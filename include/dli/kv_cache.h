@@ -18,6 +18,7 @@ class KVCache {
   const KVCacheEntry* get(const std::string& name) const;
   std::size_t sequenceLength(const std::string& name) const;
   std::size_t size() const { return entries_.size(); }
+  KVCache deepClone() const;
   void clear() { entries_.clear(); }
 
  private:

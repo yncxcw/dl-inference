@@ -6,11 +6,15 @@
 #include <limits>
 #include <utility>
 
+#include "dli/cuda_runtime.h"
+
 namespace dli {
 namespace {
 
 at::ScalarType torchDType(DType dtype) {
   switch (dtype) {
+    case DType::Bool:
+      return at::kBool;
     case DType::Float32:
       return at::kFloat;
     case DType::Int64:
@@ -20,6 +24,7 @@ at::ScalarType torchDType(DType dtype) {
 }
 
 DType dtypeFromTorch(at::ScalarType dtype) {
+  if (dtype == at::kBool) return DType::Bool;
   if (dtype == at::kFloat) return DType::Float32;
   if (dtype == at::kLong) return DType::Int64;
   throw std::invalid_argument("unsupported torch tensor dtype");
@@ -93,6 +98,8 @@ DeviceType deviceFromString(const std::string& device) {
 
 std::string toString(DType dtype) {
   switch (dtype) {
+    case DType::Bool:
+      return "bool";
     case DType::Float32:
       return "float32";
     case DType::Int64:
@@ -102,6 +109,7 @@ std::string toString(DType dtype) {
 }
 
 DType dtypeFromString(const std::string& dtype) {
+  if (dtype == "bool") return DType::Bool;
   if (dtype == "float32" || dtype == "f32") return DType::Float32;
   if (dtype == "int64" || dtype == "i64") return DType::Int64;
   throw std::invalid_argument("unsupported dtype: " + dtype);
@@ -109,6 +117,8 @@ DType dtypeFromString(const std::string& dtype) {
 
 std::size_t byteSize(DType dtype) {
   switch (dtype) {
+    case DType::Bool:
+      return sizeof(bool);
     case DType::Float32:
       return sizeof(float);
     case DType::Int64:
@@ -175,6 +185,15 @@ std::size_t Tensor::numel() const {
 
 std::size_t Tensor::nbytes() const { return numel() * byteSize(dtype_); }
 
+Tensor Tensor::clone() const {
+  if (impl_) return Tensor(impl().tensor.clone());
+  if (external_device_ptr_ == nullptr) throw std::logic_error("cannot clone uninitialized tensor");
+  Tensor result = Tensor::cuda(dtype_, shape_, device_id_);
+  cudaMemcpyBytes(result.deviceData(), external_device_ptr_, nbytes(),
+                  CudaMemcpyKind::DeviceToDevice);
+  return result;
+}
+
 void* Tensor::deviceData() {
   if (device_ != DeviceType::Cuda) throw std::logic_error("tensor is not on CUDA");
   return impl_ ? impl().tensor.data_ptr() : external_device_ptr_;
@@ -204,6 +223,18 @@ Tensor Tensor::withShape(std::vector<std::int64_t> shape) const {
 at::Tensor& Tensor::torchTensor() { return impl().tensor; }
 
 const at::Tensor& Tensor::torchTensor() const { return impl().tensor; }
+
+template <>
+bool* Tensor::data<bool>() {
+  checkHostData(*this, DType::Bool);
+  return impl().tensor.data_ptr<bool>();
+}
+
+template <>
+const bool* Tensor::data<bool>() const {
+  checkHostData(*this, DType::Bool);
+  return impl().tensor.data_ptr<bool>();
+}
 
 template <>
 float* Tensor::data<float>() {

@@ -77,4 +77,12 @@ std::size_t KVCache::sequenceLength(const std::string& name) const {
   return entry == nullptr ? 0 : static_cast<std::size_t>(entry->key.dim(2));
 }
 
+KVCache KVCache::deepClone() const {
+  KVCache result;
+  for (const auto& [name, entry] : entries_) {
+    result.entries_.emplace(name, KVCacheEntry{entry.key.clone(), entry.value.clone()});
+  }
+  return result;
+}
+
 }  // namespace dli

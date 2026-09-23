@@ -1,96 +1,128 @@
-# Qwen3.5 Terminal Chatbot
+# Qwen3.5 DLI Chatbot
 
-This example runs the text backbone of `Qwen/Qwen3.5-0.8B` as a small terminal
-chatbot. It uses the public Hugging Face `AutoTokenizer`,
-`Qwen3_5ForCausalLM`, and `TextIteratorStreamer` APIs. Each turn is rendered
-with the model's chat template, generated autoregressively, streamed as it is
-decoded, and then appended to the conversation history.
+This text-only chatbot runs Qwen3.5 model forwards through the native DLI graph
+engine. Transformers is used during the one-time checkpoint export and for the
+tokenizer/chat template; the chat process does not instantiate a Transformers
+model or call `model.generate()`.
 
-Qwen3.5 is also a multimodal model family, but this example is deliberately
-text-only. Image and video inputs require the conditional-generation model and
-processor APIs instead.
+The implementation intentionally adds no Qwen-specific DLI operator. It uses:
 
-## Install
+```text
+Qwen3_5ForCausalLM
+  -> torch.export ExportedProgram / FX
+  -> generic DLI aten graph
+  -> dli.Engine
+```
 
-Qwen3.5 support starts in Transformers 5.2. Upgrade older installations before
-running the example:
+## Build and install dependencies
+
+Build the native binding (the Triton AOT plugin is not required for this path):
+
+```bash
+cmake -S . -B build \
+  -DDLI_BUILD_TESTS=ON \
+  -DDLI_BUILD_EXAMPLES=ON \
+  -DDLI_ENABLE_TRITON_AOT=OFF
+cmake --build build -j
+```
+
+Install a Transformers release with Qwen3.5 support:
 
 ```bash
 python3 -m pip install --upgrade "transformers>=5.2.0" torch
+export PYTHONPATH="$PWD/build/python:$PWD/python${PYTHONPATH:+:$PYTHONPATH}"
 ```
 
-The first run downloads the checkpoint from the Hugging Face Hub. A CPU works
-but generates slowly; CUDA or MPS is selected automatically when available.
+## Export the checkpoint
 
-## Chat
+Export a fixed-capacity FP32 artifact bundle:
 
 ```bash
-python3 examples/qwen3_5/main.py
+python3 -m dli_export.qwen3_5 \
+  --model-id Qwen/Qwen3.5-0.8B \
+  --output-dir build/examples/qwen3_5 \
+  --max-context-tokens 4096
 ```
 
-Use `/reset` to clear the conversation while preserving an optional system
-prompt, or `/exit` to quit. The entire completed history is included when the
-next turn is templated, so follow-up questions retain context.
+The directory contains:
 
-Useful options include:
+```text
+qwen3_5.dli.bundle.json
+qwen3_5_step.dli.json
+qwen3_5.dli.weights.json
+qwen3_5.dli.weights.bin
+```
+
+Prefill and decode currently share the same recurrent step graph. Prefill resets
+the request-local `dli.ExecutionState`, injects zero cache initializers declared
+by the graph, and folds the prompt one token at a time. Decode advances the same
+explicit linear-attention and K/V cache tensors for generated tokens. The bundle
+keeps separate stage fields so a future chunked prefill graph can be introduced
+without changing the chatbot interface.
+
+The current DLI tensor format preserves FP32, int64, and bool, so the exporter
+converts the checkpoint to FP32. Expect a roughly 3 GB weight artifact for the
+0.8B model. Native BF16 preservation and a chunked prefill graph are future
+optimizations.
+
+To export an already cached or local checkpoint without Hub access:
+
+```bash
+python3 -m dli_export.qwen3_5 \
+  --model-id /path/to/qwen3.5 \
+  --output-dir build/examples/qwen3_5 \
+  --max-context-tokens 4096 \
+  --local-files-only
+```
+
+## Run the chatbot
 
 ```bash
 python3 examples/qwen3_5/main.py \
+  --artifacts build/examples/qwen3_5/qwen3_5.dli.bundle.json
+```
+
+Use `/reset` to clear history and request state, or `/exit` to quit. Useful
+options include:
+
+```bash
+python3 examples/qwen3_5/main.py \
+  --artifacts build/examples/qwen3_5/qwen3_5.dli.bundle.json \
   --system-prompt "Answer briefly and accurately." \
   --max-new-tokens 256 \
-  --temperature 1.0 \
-  --top-p 1.0 \
-  --top-k 20
+  --temperature 0 \
+  --device cpu
 ```
 
-Use `--temperature 0` for deterministic greedy decoding. Select a device
-explicitly with `--device cpu`, `--device cuda`, or `--device mps`.
-Non-thinking mode is the default and follows the checkpoint's chat template;
-pass `--thinking` to opt in (the 0.8B model can loop in thinking mode).
+Use `--device cuda` to load weights and execute generic ATen nodes on CUDA, or
+`--device auto` to select CUDA when available. DLI currently supports CPU and
+CUDA, not MPS. The tokenizer model ID defaults to the ID recorded in the
+bundle; override it with `--model-id` when needed.
 
-## One-shot and offline use
-
-Run one prompt, stream its answer, and exit:
+One-shot mode streams one response and exits:
 
 ```bash
-python3 examples/qwen3_5/main.py --prompt "Explain KV caching in two sentences."
+python3 examples/qwen3_5/main.py \
+  --artifacts build/examples/qwen3_5/qwen3_5.dli.bundle.json \
+  --prompt "Explain KV caching in two sentences."
 ```
 
-After the model is cached, prevent any Hub access with:
+The completed message history is re-rendered and re-prefilled for each turn.
+If tokenization, inference, decoding, or output fails, the pending user message
+is rolled back and the DLI request state is reset.
+
+## Tests
+
+Frontend tests use fake tokenizer and DLI objects and require no checkpoint:
 
 ```bash
-python3 examples/qwen3_5/main.py --local-files-only
+PYTHONPATH=python:examples/qwen3_5 python3 examples/qwen3_5/test_chatbot.py
 ```
 
-You can also pass a local checkpoint directory to `--model-id`.
-
-## Design notes
-
-For every user turn, the session:
-
-1. adds the user message to its in-memory history;
-2. calls `tokenizer.apply_chat_template(..., add_generation_prompt=True)`;
-3. starts `model.generate()` on a worker thread;
-4. prints decoded chunks from `TextIteratorStreamer`; and
-5. commits the complete assistant message to history.
-
-If generation fails, the pending user turn is rolled back so the next request
-does not inherit a half-completed exchange. Transformers manages the model's
-per-generation KV cache. Before generation, the session verifies that the
-rendered prompt plus `--max-new-tokens` fits `max_position_embeddings`; an
-oversized turn is rejected without changing history. The example intentionally
-re-renders full history on each turn; a production service should also choose a
-history truncation or summarization policy, isolate sessions, add cancellation,
-and bound concurrent generation.
-
-Generation stops on both Qwen3.5 termination markers: the model EOS token
-(`<|endoftext|>`, 248044) and the chat turn terminator (`<|im_end|>`, 248046).
-
-## Offline tests
-
-The tests use fake tokenizer, model, and streamer objects. They do not download
-or instantiate model weights:
+The native integration test exports a tiny hybrid Qwen3.5 with one linear-
+attention and one full-attention layer, converts its FX graph, runs several
+tokens through `dli.Engine`, and compares logits to PyTorch:
 
 ```bash
-python3 -m unittest discover -s examples/qwen3_5 -p "test_*.py" -v
+PYTHONPATH=build/python:python python3 tests/python/test_qwen3_5_dli_runtime.py
 ```

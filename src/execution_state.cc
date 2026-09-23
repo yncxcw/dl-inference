@@ -13,6 +13,15 @@ void ExecutionState::setTensor(std::string name, Tensor tensor) {
   tensors_[std::move(name)] = std::move(tensor);
 }
 
+ExecutionState ExecutionState::deepClone() const {
+  ExecutionState result;
+  result.kv_cache_ = kv_cache_.deepClone();
+  for (const auto& [name, tensor] : tensors_) {
+    result.tensors_.emplace(name, tensor.clone());
+  }
+  return result;
+}
+
 void ExecutionState::reset() {
   kv_cache_.clear();
   tensors_.clear();

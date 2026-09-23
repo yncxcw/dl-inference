@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,11 @@ class Graph {
   std::string weights;
   std::vector<std::string> inputs;
   std::vector<std::string> outputs;
+  // Stateful graph edges remain ordinary tensors. The engine injects the
+  // declared inputs before execution and publishes outputs only on success.
+  std::map<std::string, std::string> state_inputs;
+  std::map<std::string, std::string> state_outputs;
+  std::map<std::string, std::string> state_initializers;
   std::vector<Node> nodes;
 
   static Graph fromJson(const std::string& json);

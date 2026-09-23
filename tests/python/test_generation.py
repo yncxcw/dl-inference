@@ -38,6 +38,9 @@ class FakeEngine:
     def __init__(self) -> None:
         self.reset_count = 0
         self.calls: list[tuple[int, int]] = []
+        self.graphs: list[object] = []
+        self.input_shapes: list[tuple[int, ...]] = []
+        self.static_markers: list[int | None] = []
 
     def reset(self) -> None:
         self.reset_count += 1
@@ -50,10 +53,13 @@ class FakeEngine:
         state: object | None = None,
         position_offset: int = 0,
     ):
-        del graph
         del state
         token_id = int(inputs["input_ids"].item())
         self.calls.append((token_id, position_offset))
+        self.graphs.append(graph)
+        self.input_shapes.append(tuple(inputs["input_ids"].shape))
+        marker = inputs.get("static_marker")
+        self.static_markers.append(int(marker.item()) if marker is not None else None)
         logits = torch.zeros(6)
         logits[(token_id + 1) % logits.numel()] = 1.0
         return {"logits": logits}
@@ -81,6 +87,18 @@ class MissingOutputEngine(FakeEngine):
     def run(self, graph: object, inputs: dict[str, torch.Tensor], **kwargs):
         outputs = super().run(graph, inputs, **kwargs)
         return {} if self.omit_output else outputs
+
+
+class FailOnGraphEngine(FakeEngine):
+    def __init__(self, failing_graph: object) -> None:
+        super().__init__()
+        self.failing_graph: object | None = failing_graph
+
+    def run(self, graph: object, inputs: dict[str, torch.Tensor], **kwargs):
+        outputs = super().run(graph, inputs, **kwargs)
+        if graph is self.failing_graph:
+            raise RuntimeError("operator failed after a state update")
+        return outputs
 
 
 def test_greedy_generation_stops_on_eos() -> None:
@@ -202,6 +220,42 @@ def test_engine_backend_tracks_positions_and_rejects_stale_state() -> None:
         raise AssertionError("state from a previous prefill was accepted")
 
 
+def test_engine_backend_routes_prefill_and_decode_graphs_with_requested_shape() -> None:
+    engine = FakeEngine()
+    prefill_graph = object()
+    decode_graph = object()
+    backend = EngineCausalLM(
+        engine,
+        decode_graph,
+        {"static_marker": torch.tensor(2)},
+        prefill_graph=prefill_graph,
+        prefill_static_inputs={"static_marker": torch.tensor(1)},
+        input_shape=(1, 1),
+    )
+
+    step = backend.prefill([2, 4, 5])
+    next_step = backend.decode(3, step.state)
+
+    assert engine.calls == [(2, 0), (4, 1), (5, 2), (3, 3)]
+    assert engine.graphs == [prefill_graph, decode_graph, decode_graph, decode_graph]
+    assert engine.input_shapes == [(1, 1)] * 4
+    assert engine.static_markers == [1, 2, 2, 2]
+    assert step.state.position == 3
+    assert next_step.state.position == 4
+
+
+def test_engine_backend_one_graph_defaults_remain_unchanged() -> None:
+    engine = FakeEngine()
+    graph = object()
+    backend = EngineCausalLM(engine, graph, {"weight": torch.zeros(1)})
+
+    step = backend.prefill([1, 2])
+    backend.decode(3, step.state)
+
+    assert engine.graphs == [graph, graph, graph]
+    assert engine.input_shapes == [(1,), (1,), (1,)]
+
+
 def test_engine_backend_rejects_state_from_another_adapter() -> None:
     first = EngineCausalLM(FakeEngine(), object(), {"weight": torch.zeros(1)})
     second_engine = FakeEngine()
@@ -244,6 +298,38 @@ def test_engine_backend_clears_partial_state_after_failure() -> None:
     assert state.reset_count == 2
 
 
+def test_engine_backend_clears_state_after_later_prefill_phase_fails() -> None:
+    prefill_graph = object()
+    decode_graph = object()
+    engine = FailOnGraphEngine(decode_graph)
+    state = FakeState()
+    backend = EngineCausalLM(
+        engine,
+        decode_graph,
+        {"weight": torch.zeros(1)},
+        state=state,
+        prefill_graph=prefill_graph,
+    )
+
+    try:
+        backend.prefill([1, 2])
+    except RuntimeError as error:
+        assert "operator failed" in str(error)
+    else:
+        raise AssertionError("decode-graph failure during prefill was not propagated")
+
+    assert engine.graphs == [prefill_graph, decode_graph]
+    assert engine.calls == [(1, 0), (2, 1)]
+    assert state.reset_count == 2
+
+    engine.failing_graph = None
+    recovered = backend.prefill([3])
+    assert engine.calls[-1] == (3, 0)
+    assert recovered.state.generation == 3
+    assert recovered.state.position == 1
+    assert state.reset_count == 3
+
+
 def test_engine_backend_clears_state_when_logits_output_is_missing() -> None:
     engine = MissingOutputEngine()
     state = FakeState()
@@ -278,7 +364,10 @@ if __name__ == "__main__":
     test_sampling_filters_and_validation()
     test_seeded_sampling_is_repeatable()
     test_engine_backend_tracks_positions_and_rejects_stale_state()
+    test_engine_backend_routes_prefill_and_decode_graphs_with_requested_shape()
+    test_engine_backend_one_graph_defaults_remain_unchanged()
     test_engine_backend_rejects_state_from_another_adapter()
     test_prompt_validation()
     test_engine_backend_clears_partial_state_after_failure()
+    test_engine_backend_clears_state_after_later_prefill_phase_fails()
     test_engine_backend_clears_state_when_logits_output_is_missing()
