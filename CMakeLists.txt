@@ -284,7 +284,9 @@ if(DLI_BUILD_TESTS)
 
     dli_add_python_module_test(dli_py_dli_export_init tests/python/test_dli_export_init.py)
     dli_add_python_module_test(dli_py_dli_export_weights tests/python/test_dli_export_weights.py)
+    dli_add_python_module_test(dli_py_dli_export_torch_export tests/python/test_dli_export_torch_export.py)
     dli_add_python_module_test(dli_py_dli_export_export tests/python/test_dli_export_export.py)
+    dli_add_python_module_test(dli_py_qwen35_export tests/python/test_qwen3_5_export.py)
     dli_add_python_module_test(dli_py_dli_ops_init tests/python/test_dli_ops_init.py)
     dli_add_python_module_test(dli_py_dli_ops_spec tests/python/test_dli_ops_spec.py)
     dli_add_python_module_test(dli_py_qwen35_chatbot examples/qwen3_5/test_chatbot.py)
@@ -312,6 +314,20 @@ if(DLI_BUILD_TESTS)
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_generation.py
       )
       set_tests_properties(dli_py_generation PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${DLI_PYTHON_NATIVE_PATH};PYTHONDONTWRITEBYTECODE=1"
+      )
+      add_test(
+        NAME dli_py_qwen35_dli_runtime
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_qwen3_5_dli_runtime.py
+      )
+      set_tests_properties(dli_py_qwen35_dli_runtime PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${DLI_PYTHON_NATIVE_PATH};PYTHONDONTWRITEBYTECODE=1"
+      )
+      add_test(
+        NAME dli_py_dli_export_torch_runtime
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_dli_export_torch_runtime.py
+      )
+      set_tests_properties(dli_py_dli_export_torch_runtime PROPERTIES
         ENVIRONMENT "PYTHONPATH=${DLI_PYTHON_NATIVE_PATH};PYTHONDONTWRITEBYTECODE=1"
       )
 

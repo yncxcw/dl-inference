@@ -12,7 +12,7 @@
 namespace dli {
 
 enum class DeviceType { Cpu, Cuda };
-enum class DType { Float32, Int64 };
+enum class DType { Bool, Float32, Int64 };
 
 std::string toString(DeviceType device);
 DeviceType deviceFromString(const std::string& device);
@@ -41,6 +41,7 @@ class Tensor {
   std::int64_t dim(std::size_t index) const;
   std::size_t numel() const;
   std::size_t nbytes() const;
+  Tensor clone() const;
   void* deviceData();
   const void* deviceData() const;
   Tensor withShape(std::vector<std::int64_t> shape) const;

@@ -20,6 +20,8 @@ namespace {
 
 at::ScalarType torchDType(DType dtype) {
   switch (dtype) {
+    case DType::Bool:
+      return at::kBool;
     case DType::Float32:
       return at::kFloat;
     case DType::Int64:

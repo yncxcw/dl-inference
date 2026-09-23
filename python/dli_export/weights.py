@@ -8,6 +8,8 @@ import torch
 
 
 def dtype_name(tensor: torch.Tensor) -> str:
+    if tensor.dtype == torch.bool:
+        return "bool"
     if tensor.dtype == torch.float32:
         return "float32"
     if tensor.dtype == torch.int64:
@@ -21,6 +23,7 @@ class WeightWriter:
         self.stem = stem
         self.tensors: dict[str, dict[str, Any]] = {}
         self.payloads: list[bytes] = []
+        self._payloads_by_name: dict[str, bytes] = {}
         self.offset = 0
 
     @property
@@ -33,15 +36,28 @@ class WeightWriter:
 
     def add(self, name: str, tensor: torch.Tensor) -> str:
         host = tensor.detach().cpu().contiguous()
-        if host.dtype not in (torch.float32, torch.int64):
+        if host.dtype not in (torch.bool, torch.float32, torch.int64):
             host = host.to(torch.float32)
         payload = host.numpy().tobytes()
-        self.tensors[name] = {
+        metadata = {
             "dtype": dtype_name(host),
             "shape": list(host.shape),
+        }
+        if name in self.tensors:
+            existing = self.tensors[name]
+            if (
+                existing["dtype"] != metadata["dtype"]
+                or existing["shape"] != metadata["shape"]
+                or self._payloads_by_name[name] != payload
+            ):
+                raise ValueError(f"weight {name!r} was added twice with different values")
+            return name
+        self.tensors[name] = {
+            **metadata,
             "offset": self.offset,
             "nbytes": len(payload),
         }
+        self._payloads_by_name[name] = payload
         self.offset += len(payload)
         self.payloads.append(payload)
         return name

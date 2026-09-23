@@ -12,7 +12,10 @@ int main() {
     dli_test::expect(dli::toString(dli::DeviceType::Cuda) == "cuda", "cuda device string");
     dli_test::expect(dli::deviceFromString("gpu") == dli::DeviceType::Cuda, "gpu device alias");
     dli_test::expect(dli::toString(dli::DType::Float32) == "float32", "float32 dtype string");
+    dli_test::expect(dli::toString(dli::DType::Bool) == "bool", "bool dtype string");
+    dli_test::expect(dli::dtypeFromString("bool") == dli::DType::Bool, "bool dtype parse");
     dli_test::expect(dli::dtypeFromString("i64") == dli::DType::Int64, "int64 dtype alias");
+    dli_test::expect(dli::byteSize(dli::DType::Bool) == sizeof(bool), "bool byte size");
     dli_test::expect(dli::byteSize(dli::DType::Int64) == sizeof(std::int64_t), "int64 byte size");
 
     auto torch_tensor =
@@ -31,6 +34,12 @@ int main() {
     dli_test::expect(dli::sameShape(ints, dli::Tensor::zeros(dli::DType::Int64, {2, 2})),
                      "same shape helper");
     dli_test::expect(dli::contiguousOffset({2, 3, 4}, {1, 2, 3}) == 23, "contiguous offset");
+
+    auto bools = dli::Tensor::zeros(dli::DType::Bool, {2});
+    bools.data<bool>()[1] = true;
+    dli_test::expect(bools.dtype() == dli::DType::Bool, "bool tensor dtype");
+    dli_test::expect(bools.torchTensor().scalar_type() == at::kBool, "bool torch dtype");
+    dli_test::expect(bools.data<bool>()[1], "bool tensor value");
 
     auto* fake_ptr = reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x1000));
     auto external = dli::Tensor::externalCuda(dli::DType::Float32, {2, 3}, fake_ptr, 0);

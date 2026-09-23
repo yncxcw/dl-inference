@@ -26,6 +26,7 @@ class ExecutionState {
   // publish replacements with setTensor(), which keeps per-run copies isolated.
   const Tensor* findTensor(const std::string& name) const;
   void setTensor(std::string name, Tensor tensor);
+  ExecutionState deepClone() const;
 
   std::size_t tensorCount() const { return tensors_.size(); }
   void reset();

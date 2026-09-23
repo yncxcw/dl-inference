@@ -60,7 +60,10 @@ PYBIND11_MODULE(_dli_native, m) {
       .def_readwrite("model_type", &dli::Graph::model_type)
       .def_readwrite("weights", &dli::Graph::weights)
       .def_readwrite("inputs", &dli::Graph::inputs)
-      .def_readwrite("outputs", &dli::Graph::outputs);
+      .def_readwrite("outputs", &dli::Graph::outputs)
+      .def_readwrite("state_inputs", &dli::Graph::state_inputs)
+      .def_readwrite("state_outputs", &dli::Graph::state_outputs)
+      .def_readwrite("state_initializers", &dli::Graph::state_initializers);
 
   py::class_<dli::ExecutionState>(m, "ExecutionState")
       .def(py::init<>())
