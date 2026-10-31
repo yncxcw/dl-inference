@@ -38,13 +38,16 @@ export PYTHONPATH="$PWD/build/python:$PWD/python${PYTHONPATH:+:$PYTHONPATH}"
 Export a fixed-capacity FP32 artifact bundle:
 
 ```bash
-python3 -m dli_export.qwen3_5 \
+python3 -m dli_export.causal_lm \
   --model-id Qwen/Qwen3.5-0.8B \
   --output-dir build/examples/qwen3_5 \
-  --max-context-tokens 4096
+  --max-context-tokens 4096 \
+  --stem qwen3_5
 ```
 
-The directory contains:
+`dli_export.causal_lm` is the generic exporter for Hugging Face causal LMs;
+Qwen3.5 needs no model-specific code. `python3 -m dli_export.qwen3_5` remains
+as an alias. The directory contains:
 
 ```text
 qwen3_5.dli.bundle.json
@@ -68,10 +71,11 @@ optimizations.
 To export an already cached or local checkpoint without Hub access:
 
 ```bash
-python3 -m dli_export.qwen3_5 \
+python3 -m dli_export.causal_lm \
   --model-id /path/to/qwen3.5 \
   --output-dir build/examples/qwen3_5 \
   --max-context-tokens 4096 \
+  --stem qwen3_5 \
   --local-files-only
 ```
 
@@ -119,10 +123,11 @@ Frontend tests use fake tokenizer and DLI objects and require no checkpoint:
 PYTHONPATH=python:examples/qwen3_5 python3 examples/qwen3_5/test_chatbot.py
 ```
 
-The native integration test exports a tiny hybrid Qwen3.5 with one linear-
-attention and one full-attention layer, converts its FX graph, runs several
-tokens through `dli.Engine`, and compares logits to PyTorch:
+The native integration test uses the generic exporter on tiny Llama, Qwen3 and
+hybrid Qwen3.5 models (one linear-attention and one full-attention layer),
+converts their FX graphs, runs several tokens through `dli.Engine`, and
+compares logits to the full-sequence PyTorch forward:
 
 ```bash
-PYTHONPATH=build/python:python python3 tests/python/test_qwen3_5_dli_runtime.py
+PYTHONPATH=build/python:python python3 tests/python/test_dli_export_causal_lm.py
 ```

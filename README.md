@@ -120,20 +120,31 @@ through the Python engine binding, and needs a visible NVIDIA GPU compatible
 with the AOT architecture. Use `--export-only` to generate the graph and weights
 without launching GPU inference.
 
-Qwen3.5 uses a separate export step because its FP32 weights are large. The
-exporter captures one fixed-shape recurrent PyTorch/FX program, lowers its
-ordinary ATen nodes into a DLI graph, and writes the explicit cache
-initializers and model weights:
+Language models use a separate export step because their FP32 weights are
+large. `dli_export.causal_lm` exports any Hugging Face causal LM without
+model-specific code: it builds a Transformers `StaticCache`, discovers every
+tensor the cache layers hold (attention K/V, linear-attention conv and
+recurrent state, write positions) and makes each one named request state, then
+captures one fixed-shape, one-token PyTorch/FX program, lowers its ordinary
+ATen nodes into a DLI graph, and writes the zero state initializers and model
+weights. It is verified token for token against Transformers on Qwen3.5-0.8B
+(hybrid linear attention) and Qwen3-0.6B (dense), and on small Llama, Qwen3
+and Qwen3.5 models in the tests:
 
 ```bash
-PYTHONPATH=python python3 -m dli_export.qwen3_5 \
+PYTHONPATH=python python3 -m dli_export.causal_lm \
   --model-id Qwen/Qwen3.5-0.8B \
   --output-dir build/examples/qwen3_5 \
-  --max-context-tokens 4096
+  --max-context-tokens 4096 \
+  --stem qwen3_5
 
 PYTHONPATH=build/python:python python3 examples/qwen3_5/main.py \
   --artifacts build/examples/qwen3_5/qwen3_5.dli.bundle.json
 ```
+
+Without `--stem`, files are named after the model (`qwen3.5-0.8b.*`).
+`python -m dli_export.qwen3_5` remains as an alias that keeps the `qwen3_5`
+stem.
 
 The chatbot uses Transformers for tokenization only. Every model forward runs
 through `dli.Engine`; no Qwen-specific C++ operator is registered. See

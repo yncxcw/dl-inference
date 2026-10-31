@@ -18,6 +18,18 @@ library internals, the exporter may add architecture lowerers. Qwen2 is handled
 this way: the generic exporter detects `config.model_type == "qwen2"` and walks
 the real Hugging Face module structure.
 
+Autoregressive language models use `dli_export.causal_lm`, which needs no
+per-model code. It builds a Transformers `StaticCache` for the model's config,
+runs warm-up steps so every cache layer allocates its tensors, and makes each
+tensor a layer holds (attention K/V, linear-attention conv and recurrent state,
+write positions) a named request state input and output of a one-token
+`torch.export` step. Functions wrapped by Transformers' Hub-kernel loader are
+swapped for their PyTorch references while tracing. Export fails if a cache
+layer keeps per-step state outside tensors, since tracing would freeze it.
+Verified models: Qwen3.5-0.8B (hybrid), Qwen3-0.6B (dense), and small Llama,
+Qwen3 and Qwen3.5 models in `tests/python/test_dli_export_causal_lm.py`.
+Sliding-window cache layers are untested.
+
 Model files in `examples/` should provide factories only. They should not carry
 custom `export_model()` functions. Export policy stays centralized in
 `python/dli_export/export.py`.

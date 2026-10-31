@@ -286,7 +286,6 @@ if(DLI_BUILD_TESTS)
     dli_add_python_module_test(dli_py_dli_export_weights tests/python/test_dli_export_weights.py)
     dli_add_python_module_test(dli_py_dli_export_torch_export tests/python/test_dli_export_torch_export.py)
     dli_add_python_module_test(dli_py_dli_export_export tests/python/test_dli_export_export.py)
-    dli_add_python_module_test(dli_py_qwen35_export tests/python/test_qwen3_5_export.py)
     dli_add_python_module_test(dli_py_dli_ops_init tests/python/test_dli_ops_init.py)
     dli_add_python_module_test(dli_py_dli_ops_spec tests/python/test_dli_ops_spec.py)
     dli_add_python_module_test(dli_py_qwen35_chatbot examples/qwen3_5/test_chatbot.py)
@@ -317,10 +316,10 @@ if(DLI_BUILD_TESTS)
         ENVIRONMENT "PYTHONPATH=${DLI_PYTHON_NATIVE_PATH};PYTHONDONTWRITEBYTECODE=1"
       )
       add_test(
-        NAME dli_py_qwen35_dli_runtime
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_qwen3_5_dli_runtime.py
+        NAME dli_py_dli_export_causal_lm
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_dli_export_causal_lm.py
       )
-      set_tests_properties(dli_py_qwen35_dli_runtime PROPERTIES
+      set_tests_properties(dli_py_dli_export_causal_lm PROPERTIES
         ENVIRONMENT "PYTHONPATH=${DLI_PYTHON_NATIVE_PATH};PYTHONDONTWRITEBYTECODE=1"
       )
       add_test(
