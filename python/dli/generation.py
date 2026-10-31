@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, Iterator, Mapping, Protocol, Sequence
 
@@ -84,23 +85,27 @@ def sample_token(
         return int(torch.argmax(scores).item())
 
     scores = scores.float() / config.temperature
-    if config.top_k:
-        top_k = min(config.top_k, scores.numel())
-        top_values, top_indices = torch.topk(scores, top_k)
-        scores = torch.full_like(scores, float("-inf")).scatter(0, top_indices, top_values)
+    # Restrict work to the candidate set as early as possible: with a large
+    # vocabulary, top-k first keeps softmax and the top-p sort at k elements.
+    # candidate_ids maps positions in `scores` back to vocabulary IDs.
+    candidate_ids: torch.Tensor | None = None
+    if config.top_k and config.top_k < scores.numel():
+        scores, candidate_ids = torch.topk(scores, config.top_k)
 
     probabilities = torch.softmax(scores, dim=-1)
     if config.top_p < 1.0:
-        sorted_probabilities, sorted_indices = torch.sort(probabilities, descending=True)
-        cumulative = torch.cumsum(sorted_probabilities, dim=-1)
-        remove = cumulative - sorted_probabilities >= config.top_p
-        sorted_probabilities = sorted_probabilities.masked_fill(remove, 0.0)
-        probabilities = torch.zeros_like(probabilities).scatter(
-            0, sorted_indices, sorted_probabilities
-        )
-        probabilities = probabilities / probabilities.sum()
+        if candidate_ids is None:
+            probabilities, candidate_ids = torch.sort(probabilities, descending=True)
+        # torch.topk already returns descending scores, so both paths are sorted.
+        cumulative = torch.cumsum(probabilities, dim=-1)
+        remove = cumulative - probabilities >= config.top_p
+        probabilities = probabilities.masked_fill(remove, 0.0)
 
-    return int(torch.multinomial(probabilities, 1, generator=generator).item())
+    # multinomial accepts unnormalized weights.
+    choice = torch.multinomial(probabilities, 1, generator=generator)
+    if candidate_ids is not None:
+        choice = candidate_ids[choice]
+    return int(choice.item())
 
 
 def generate_tokens(
@@ -157,6 +162,20 @@ def generate_tokens(
         step = backend.decode(token_id, step.state)
 
 
+def validate_single_token_shape(shape: Sequence[int]) -> tuple[int, ...]:
+    """Return ``shape`` as a tuple if it has positive dimensions holding one token."""
+
+    normalized = tuple(shape)
+    if not normalized or any(
+        isinstance(dimension, bool) or not isinstance(dimension, int) or dimension <= 0
+        for dimension in normalized
+    ):
+        raise ValueError("input_shape must contain positive integer dimensions")
+    if math.prod(normalized) != 1:
+        raise ValueError("input_shape must describe exactly one token")
+    return normalized
+
+
 @dataclass(frozen=True)
 class EngineGenerationState:
     generation: int
@@ -170,7 +189,11 @@ class EngineCausalLM:
     Prompt tokens are intentionally submitted one at a time. If a distinct
     prefill graph is provided, it runs the first prompt token and the decode
     graph runs all remaining prompt and generated tokens. The engine cache is
-    reset at prefill and retained across subsequent decode calls.
+    retained across decode calls.
+
+    With ``reuse_prefix`` enabled, ``prefill`` keeps the cache when the new
+    prompt extends the tokens already consumed (for example the next turn of a
+    chat) and runs only the new suffix. Otherwise the cache is reset first.
     """
 
     def __init__(
@@ -187,20 +210,11 @@ class EngineCausalLM:
         prefill_graph: Any | None = None,
         prefill_static_inputs: Mapping[str, torch.Tensor] | None = None,
         input_shape: Sequence[int] = (1,),
+        reuse_prefix: bool = True,
     ) -> None:
         if max_context_tokens is not None and max_context_tokens <= 0:
             raise ValueError("max_context_tokens must be positive")
-        normalized_input_shape = tuple(input_shape)
-        if not normalized_input_shape or any(
-            isinstance(dimension, bool) or not isinstance(dimension, int) or dimension <= 0
-            for dimension in normalized_input_shape
-        ):
-            raise ValueError("input_shape must contain positive integer dimensions")
-        input_elements = 1
-        for dimension in normalized_input_shape:
-            input_elements *= dimension
-        if input_elements != 1:
-            raise ValueError("input_shape must describe exactly one token")
+        normalized_input_shape = validate_single_token_shape(input_shape)
         self.engine = engine
         self.graph = graph
         self.static_inputs = dict(static_inputs)
@@ -213,10 +227,16 @@ class EngineCausalLM:
         self.output_name = output_name
         self.max_context_tokens = max_context_tokens
         self.state = state
+        self.reuse_prefix = reuse_prefix
         self.device = torch.device(device) if device is not None else self._input_device()
+        # One device buffer for every step avoids a host-to-device allocation
+        # per token. Writes are stream-ordered after the previous run.
+        self._input_buffer = torch.empty(self.input_shape, dtype=torch.int64, device=self.device)
         self._state_owner = object()
         self._generation = 0
         self._position = 0
+        # Token IDs whose effects are held in the engine cache, in order.
+        self._consumed: list[int] = []
 
     def _input_device(self) -> torch.device:
         for inputs in (self.static_inputs, self.prefill_static_inputs):
@@ -232,6 +252,7 @@ class EngineCausalLM:
             self.state.reset()
         self._generation += 1
         self._position = 0
+        self._consumed.clear()
 
     def _run_token(
         self,
@@ -244,12 +265,7 @@ class EngineCausalLM:
         if self.max_context_tokens is not None and self._position >= self.max_context_tokens:
             raise ValueError("model context is full")
         inputs = dict(static_inputs)
-        inputs[self.input_name] = torch.full(
-            self.input_shape,
-            token_id,
-            dtype=torch.int64,
-            device=self.device,
-        )
+        inputs[self.input_name] = self._input_buffer.fill_(token_id)
         run_options: dict[str, Any] = {"position_offset": self._position}
         if self.state is not None:
             run_options["state"] = self.state
@@ -258,12 +274,15 @@ class EngineCausalLM:
             if self.output_name not in outputs:
                 raise KeyError(f"graph did not return logits output: {self.output_name}")
             logits = outputs[self.output_name]
-        except Exception:
-            # A graph may update some layers before a later operator fails.
-            # Clear the request state so callers cannot resume a partial step.
+            self._position += 1
+            self._consumed.append(token_id)
+        except BaseException:
+            # A graph may update some layers before a later operator fails, and
+            # an interrupt can land after the engine advanced but before the
+            # position did. Clear the request state so callers cannot resume a
+            # partial step.
             self.reset()
             raise
-        self._position += 1
         return logits
 
     def prefill(self, input_ids: Sequence[int]) -> ModelStep:
@@ -272,13 +291,22 @@ class EngineCausalLM:
             raise ValueError("input_ids must contain at least one token")
         if self.max_context_tokens is not None and len(prompt) > self.max_context_tokens:
             raise ValueError("prompt exceeds model context")
-        self.reset()
-        logits = self._run_token(
-            prompt[0],
-            self.prefill_graph,
-            self.prefill_static_inputs,
-        )
-        for token_id in prompt[1:]:
+        reused = len(self._consumed)
+        # The suffix must be non-empty: its last token produces the logits.
+        if not (
+            self.reuse_prefix
+            and 0 < reused < len(prompt)
+            and prompt[:reused] == tuple(self._consumed)
+        ):
+            self.reset()
+            reused = 0
+        else:
+            # Invalidate states handed out before this call; the cache stays.
+            self._generation += 1
+        if reused == 0:
+            logits = self._run_token(prompt[0], self.prefill_graph, self.prefill_static_inputs)
+            reused = 1
+        for token_id in prompt[reused:]:
             logits = self._run_token(token_id, self.graph, self.static_inputs)
         return ModelStep(
             logits,
@@ -309,4 +337,5 @@ __all__ = [
     "ModelStep",
     "generate_tokens",
     "sample_token",
+    "validate_single_token_shape",
 ]

@@ -23,8 +23,9 @@ TensorMap Engine::run(const Graph& graph, TensorMap tensors, const RunOptions& o
   // Mutate a private view and publish it only after the whole graph (including
   // output validation) succeeds. Functional ATen schemas cannot mutate state
   // storage, so their common path shares immutable tensor handles. Custom
-  // operators receive a deep snapshot because their implementations cannot be
-  // mechanically checked for in-place mutations before they throw.
+  // operators receive a snapshot with copied named tensors because their
+  // implementations cannot be mechanically checked for in-place mutations
+  // before they throw. KV entries are immutable and stay shared.
   const bool has_custom_operator =
       std::any_of(graph.nodes.begin(), graph.nodes.end(),
                   [](const Node& node) { return node.op_type != "aten"; });

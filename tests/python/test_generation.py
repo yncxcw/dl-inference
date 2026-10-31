@@ -358,6 +358,94 @@ def test_engine_backend_clears_state_when_logits_output_is_missing() -> None:
         raise AssertionError("state from a failed decode was accepted")
 
 
+def test_top_k_and_top_p_map_back_to_vocabulary_ids() -> None:
+    logits = torch.tensor([0.0, 5.0, 1.0, 4.9, -3.0])
+    # top_k keeps IDs 1 and 3; top_p then keeps only the most likely of them.
+    config = GenerationConfig(temperature=1.0, top_k=2, top_p=0.1)
+    assert {sample_token(logits, config) for _ in range(20)} == {1}
+    config = GenerationConfig(temperature=1.0, top_k=2, top_p=1.0, seed=0)
+    assert {sample_token(logits, config) for _ in range(50)} <= {1, 3}
+    # top_p alone sorts the full vocabulary and must still return vocabulary IDs.
+    assert sample_token(logits, GenerationConfig(temperature=1.0, top_p=0.1)) == 1
+
+
+def test_engine_backend_reuses_cache_when_prompt_extends_history() -> None:
+    engine = FakeEngine()
+    state = FakeState()
+    prefill_graph = object()
+    decode_graph = object()
+    backend = EngineCausalLM(
+        engine,
+        decode_graph,
+        {"weight": torch.zeros(1)},
+        state=state,
+        prefill_graph=prefill_graph,
+    )
+
+    first = backend.prefill([1, 2])
+    backend.decode(3, first.state)
+    engine.calls.clear()
+    engine.graphs.clear()
+
+    second = backend.prefill([1, 2, 3, 4, 5])
+    assert state.reset_count == 1
+    assert engine.calls == [(4, 3), (5, 4)]
+    assert engine.graphs == [decode_graph, decode_graph]
+    assert second.state.position == 5
+    try:
+        backend.decode(9, first.state)
+    except ValueError as error:
+        assert "stale" in str(error)
+    else:
+        raise AssertionError("state from before the reused prefill was accepted")
+
+    # Diverging and identical prompts both fall back to a full prefill.
+    engine.calls.clear()
+    backend.prefill([1, 7])
+    assert state.reset_count == 2
+    assert engine.calls == [(1, 0), (7, 1)]
+    engine.calls.clear()
+    backend.prefill([1, 7])
+    assert state.reset_count == 3
+    assert engine.calls == [(1, 0), (7, 1)]
+
+
+def test_engine_backend_prefix_reuse_can_be_disabled() -> None:
+    engine = FakeEngine()
+    state = FakeState()
+    backend = EngineCausalLM(
+        engine, object(), {"weight": torch.zeros(1)}, state=state, reuse_prefix=False
+    )
+    backend.prefill([1, 2])
+    backend.prefill([1, 2, 3])
+    assert state.reset_count == 2
+    assert engine.calls[-3:] == [(1, 0), (2, 1), (3, 2)]
+
+
+def test_engine_backend_resets_when_interrupted_mid_step() -> None:
+    class InterruptingEngine(FakeEngine):
+        def run(self, graph: object, inputs: dict[str, torch.Tensor], **kwargs):
+            outputs = super().run(graph, inputs, **kwargs)
+            if int(inputs["input_ids"].item()) == 3:
+                raise KeyboardInterrupt
+            return outputs
+
+    state = FakeState()
+    backend = EngineCausalLM(
+        InterruptingEngine(), object(), {"weight": torch.zeros(1)}, state=state
+    )
+    step = backend.prefill([1, 2])
+    try:
+        backend.decode(3, step.state)
+    except KeyboardInterrupt:
+        pass
+    else:
+        raise AssertionError("interrupt was swallowed")
+    assert state.reset_count == 2
+    assert backend.prefill([1, 2]).state.position == 2
+    assert state.reset_count == 3
+
+
 if __name__ == "__main__":
     test_greedy_generation_stops_on_eos()
     test_generation_limits_and_zero_token_shortcut()
@@ -371,3 +459,7 @@ if __name__ == "__main__":
     test_engine_backend_clears_partial_state_after_failure()
     test_engine_backend_clears_state_after_later_prefill_phase_fails()
     test_engine_backend_clears_state_when_logits_output_is_missing()
+    test_top_k_and_top_p_map_back_to_vocabulary_ids()
+    test_engine_backend_reuses_cache_when_prompt_extends_history()
+    test_engine_backend_prefix_reuse_can_be_disabled()
+    test_engine_backend_resets_when_interrupted_mid_step()

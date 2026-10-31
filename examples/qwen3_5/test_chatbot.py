@@ -177,9 +177,13 @@ class ChatSessionTest(unittest.TestCase):
 
     def test_multibyte_replacement_suffix_is_held_until_it_resolves(self) -> None:
         class MultibyteTokenizer(FakeTokenizer):
+            # "你" is e4 bd a0 in UTF-8, split across two byte-level tokens.
+            token_bytes = {1: b"\xe4\xbd", 2: b"\xa0"}
+
             def decode(self, token_ids, **kwargs):
                 self.decode_calls.append((tuple(token_ids), kwargs))
-                return {(1,): "\ufffd", (1, 2): "你"}[tuple(token_ids)]
+                data = b"".join(self.token_bytes[token_id] for token_id in token_ids)
+                return data.decode("utf-8", errors="replace")
 
         tokenizer = MultibyteTokenizer()
         backend = FakeBackend([[1, 2]])
@@ -211,20 +215,74 @@ class ChatSessionTest(unittest.TestCase):
         session.stream_reply("Think about this", lambda chunk: None)
         self.assertTrue(tokenizer.last_template_kwargs["enable_thinking"])
 
-    def test_rejects_turn_that_cannot_reserve_requested_output_tokens(self) -> None:
-        session, tokenizer, backend, dli_runtime = self.make_session(
+    def test_clamps_reply_length_to_remaining_context(self) -> None:
+        session, tokenizer, _, dli_runtime = self.make_session(
             [[10]],
             generation=GenerationOptions(max_new_tokens=3),
             max_context_tokens=8,
         )
         tokenizer.input_ids = list(range(6))
 
-        with self.assertRaisesRegex(ValueError, "6 prompt tokens plus 3 requested tokens"):
+        session.stream_reply("Nearly full", lambda chunk: None)
+
+        self.assertEqual(dli_runtime.calls[0][2].kwargs["max_new_tokens"], 2)
+
+    def test_rejects_turn_when_prompt_fills_context(self) -> None:
+        session, tokenizer, backend, dli_runtime = self.make_session(
+            [[10]],
+            generation=GenerationOptions(max_new_tokens=3),
+            max_context_tokens=6,
+        )
+        tokenizer.input_ids = list(range(6))
+
+        with self.assertRaisesRegex(ValueError, "6 prompt tokens leave no room.*/reset"):
             session.stream_reply("Too long", lambda chunk: None)
 
         self.assertEqual(dli_runtime.calls, [])
         self.assertEqual(session.messages, ())
         self.assertEqual(backend.reset_count, 1)
+
+    def test_decodes_only_a_trailing_window_per_token(self) -> None:
+        session, tokenizer, _, _ = self.make_session([[10, 11, 12, 11, 12, 11]])
+
+        reply = session.stream_reply("Talk", lambda chunk: None)
+
+        self.assertEqual(reply, "Hello thereI remember. thereI remember. there")
+        self.assertLessEqual(max(len(ids) for ids, _ in tokenizer.decode_calls), 2)
+
+    def test_interrupt_keeps_partial_reply_without_resetting_backend(self) -> None:
+        session, _, backend, _ = self.make_session([[10, KeyboardInterrupt()]])
+
+        with self.assertRaises(KeyboardInterrupt):
+            session.stream_reply("Stop me", lambda chunk: None)
+
+        self.assertEqual(
+            session.messages,
+            (
+                {"role": "user", "content": "Stop me"},
+                {"role": "assistant", "content": "Hello"},
+            ),
+        )
+        self.assertEqual(backend.reset_count, 0)
+
+    def test_failed_backend_reset_is_retried_before_next_turn(self) -> None:
+        session, _, backend, _ = self.make_session([RuntimeError("generation failed"), [10]])
+        resets = iter([RuntimeError("reset failed"), None])
+
+        def flaky_reset() -> None:
+            backend.reset_count += 1
+            error = next(resets)
+            if error is not None:
+                raise error
+
+        backend.reset = flaky_reset
+
+        with self.assertRaisesRegex(RuntimeError, "generation failed") as caught:
+            session.stream_reply("First", lambda chunk: None)
+        self.assertIn("reset failed", caught.exception.__notes__[0])
+
+        self.assertEqual(session.stream_reply("Second", lambda chunk: None), "Hello")
+        self.assertEqual(backend.reset_count, 2)
 
 
 class FakeGraph:
@@ -410,14 +468,14 @@ class HelpersTest(unittest.TestCase):
 
     def test_invalid_generation_options_fail_early(self) -> None:
         invalid = (
-            (GenerationOptions(max_new_tokens=0), "greater than zero"),
-            (GenerationOptions(temperature=-1), "non-negative"),
-            (GenerationOptions(top_p=0), "interval"),
-            (GenerationOptions(top_k=-1), "top_k"),
+            ({"max_new_tokens": 0}, "greater than zero"),
+            ({"temperature": -1}, "non-negative"),
+            ({"top_p": 0}, "interval"),
+            ({"top_k": -1}, "top_k"),
         )
-        for options, message in invalid:
-            with self.subTest(options=options), self.assertRaisesRegex(ValueError, message):
-                options.validate()
+        for kwargs, message in invalid:
+            with self.subTest(kwargs=kwargs), self.assertRaisesRegex(ValueError, message):
+                GenerationOptions(**kwargs)
 
     def test_stop_ids_use_tokenizer_without_a_model(self) -> None:
         tokenizer = types.SimpleNamespace(eos_token_id=[7, 8])
@@ -510,15 +568,18 @@ class HelpersTest(unittest.TestCase):
             def stream_reply(self, prompt, emit) -> None:
                 self.prompts.append(prompt)
                 emit("answer")
+                if prompt == "interrupt":
+                    raise KeyboardInterrupt
 
         session = Session()
-        inputs = iter(["/reset", "hello", "/exit"])
+        inputs = iter(["/reset", "hello", "interrupt", "/exit"])
         output = io.StringIO()
 
         run_interactive(session, input_fn=lambda _: next(inputs), output=output)
 
         self.assertEqual(session.resets, 1)
-        self.assertEqual(session.prompts, ["hello"])
+        self.assertEqual(session.prompts, ["hello", "interrupt"])
+        self.assertIn("Assistant: answer [interrupted]", output.getvalue())
         self.assertIn("Conversation reset.", output.getvalue())
         self.assertIn("Assistant: answer", output.getvalue())
 

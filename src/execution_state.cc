@@ -15,7 +15,11 @@ void ExecutionState::setTensor(std::string name, Tensor tensor) {
 
 ExecutionState ExecutionState::deepClone() const {
   ExecutionState result;
-  result.kv_cache_ = kv_cache_.deepClone();
+  // KV entries are immutable: append() publishes freshly allocated tensors, so
+  // sharing them keeps the snapshot isolated without copying the whole
+  // sequence on every decode step. Named tensors may be mutated by custom
+  // operators and are still copied.
+  result.kv_cache_ = kv_cache_;
   for (const auto& [name, tensor] : tensors_) {
     result.tensors_.emplace(name, tensor.clone());
   }

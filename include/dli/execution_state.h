@@ -26,6 +26,7 @@ class ExecutionState {
   // publish replacements with setTensor(), which keeps per-run copies isolated.
   const Tensor* findTensor(const std::string& name) const;
   void setTensor(std::string name, Tensor tensor);
+  // Copies named tensors; KV entries are shared because they are immutable.
   ExecutionState deepClone() const;
 
   std::size_t tensorCount() const { return tensors_.size(); }

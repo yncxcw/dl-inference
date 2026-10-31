@@ -3,9 +3,10 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import math
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import ModuleType
 from typing import Any, NamedTuple, TextIO
@@ -42,7 +43,9 @@ class GenerationOptions:
     top_p: float = 1.0
     top_k: int = 20
 
-    def validate(self) -> None:
+    def __post_init__(self) -> None:
+        # Validated here rather than by dli.GenerationConfig so bad CLI flags
+        # fail before the DLI runtime and model artifacts are loaded.
         if self.max_new_tokens <= 0:
             raise ValueError("max_new_tokens must be greater than zero")
         if self.temperature < 0:
@@ -59,7 +62,6 @@ class GenerationOptions:
         stop_token_ids: tuple[int, ...],
         max_context_tokens: int | None,
     ) -> Any:
-        self.validate()
         return dli_module.GenerationConfig(
             max_new_tokens=self.max_new_tokens,
             temperature=self.temperature,
@@ -155,10 +157,7 @@ def load_artifact_bundle(path: str | Path) -> ArtifactBundle:
         for dimension in raw_input_shape
     ):
         raise ValueError("artifact bundle input_shape must contain positive integers")
-    input_elements = 1
-    for dimension in raw_input_shape:
-        input_elements *= dimension
-    if input_elements != 1:
+    if math.prod(raw_input_shape) != 1:
         raise ValueError("artifact bundle input_shape must describe exactly one token")
 
     model_id = data.get("model_id")
@@ -235,20 +234,70 @@ def _extract_input_ids(encoded: Any) -> tuple[int, ...]:
     return prompt
 
 
-def _validate_context_budget(
-    input_ids: Sequence[int],
+def _max_new_tokens_for_context(
+    prompt_tokens: int,
     max_context_tokens: int | None,
     max_new_tokens: int,
-) -> None:
+) -> int:
+    """Clamp the reply length to the room left in the context window."""
+
     if max_context_tokens is None:
-        return
-    prompt_tokens = len(input_ids)
-    if prompt_tokens + max_new_tokens > max_context_tokens:
+        return max_new_tokens
+    remaining = max_context_tokens - prompt_tokens
+    if remaining <= 0:
         raise ValueError(
-            "conversation is too long: "
-            f"{prompt_tokens} prompt tokens plus {max_new_tokens} requested tokens exceed "
-            f"the model context window of {max_context_tokens}"
+            f"conversation is too long: {prompt_tokens} prompt tokens leave no room in "
+            f"the model context window of {max_context_tokens}; use /reset to start over"
         )
+    return min(max_new_tokens, remaining)
+
+
+class _IncrementalDecoder:
+    """Stream text for a growing token sequence without re-decoding all of it.
+
+    Each step decodes only the tokens since the last emitted boundary, so the
+    cost per token stays constant. Text ending in U+FFFD (an incomplete
+    multi-byte character) is held back until a later token completes it.
+    """
+
+    def __init__(self, tokenizer: Any) -> None:
+        self._tokenizer = tokenizer
+        self._token_ids: list[int] = []
+        self._prefix_offset = 0
+        self._read_offset = 0
+        self.text = ""
+
+    def _decode(self, token_ids: Sequence[int]) -> str:
+        decoded = self._tokenizer.decode(
+            token_ids,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )
+        if not isinstance(decoded, str):
+            raise TypeError("tokenizer.decode must return a string")
+        return decoded
+
+    def _advance(self, *, final: bool) -> str:
+        # Decoding from an earlier boundary gives the tokenizer the context it
+        # needs for leading spaces and merged bytes at the window start.
+        prefix = self._decode(self._token_ids[self._prefix_offset : self._read_offset])
+        current = self._decode(self._token_ids[self._prefix_offset :])
+        if not current.startswith(prefix):
+            raise RuntimeError("tokenizer produced a non-prefix incremental decode")
+        chunk = current[len(prefix) :]
+        if not final and (not chunk or current.endswith("�")):
+            return ""
+        self._prefix_offset = self._read_offset
+        self._read_offset = len(self._token_ids)
+        self.text += chunk
+        return chunk
+
+    def push(self, token_id: int) -> str:
+        self._token_ids.append(token_id)
+        return self._advance(final=False)
+
+    def flush(self) -> str:
+        return self._advance(final=True) if self._read_offset < len(self._token_ids) else ""
 
 
 class ChatSession:
@@ -272,6 +321,7 @@ class ChatSession:
         self._thinking = thinking
         self._dli_module = dli_module
         self._stop_token_ids = resolve_stop_token_ids(tokenizer)
+        self._backend_needs_reset = False
         self._messages: list[dict[str, str]] = []
         self.model_id = model_id
         self._reset_messages()
@@ -293,6 +343,7 @@ class ChatSession:
     def reset(self) -> None:
         self._reset_messages()
         self._reset_backend()
+        self._backend_needs_reset = False
 
     def _runtime(self) -> Any:
         if self._dli_module is None:
@@ -300,10 +351,22 @@ class ChatSession:
         return self._dli_module
 
     def stream_reply(self, prompt: str, emit: Callable[[str], None]) -> str:
+        """Generate one assistant turn, streaming text chunks through ``emit``.
+
+        Errors roll the turn back. A KeyboardInterrupt keeps the partial reply
+        in the history and then propagates so the caller can resume chatting.
+        """
+
         if not prompt.strip():
             raise ValueError("prompt must not be empty")
+        if self._backend_needs_reset:
+            # A previous rollback could not reset the backend; never generate
+            # from state that may hold a partial turn.
+            self._reset_backend()
+            self._backend_needs_reset = False
 
         self._messages.append({"role": "user", "content": prompt})
+        decoder = _IncrementalDecoder(self._tokenizer)
         try:
             encoded = self._tokenizer.apply_chat_template(
                 self._messages,
@@ -314,60 +377,47 @@ class ChatSession:
             )
             input_ids = _extract_input_ids(encoded)
             max_context_tokens = getattr(self._backend, "max_context_tokens", None)
-            _validate_context_budget(
-                input_ids,
-                max_context_tokens,
-                self._generation.max_new_tokens,
+            options = replace(
+                self._generation,
+                max_new_tokens=_max_new_tokens_for_context(
+                    len(input_ids),
+                    max_context_tokens,
+                    self._generation.max_new_tokens,
+                ),
             )
 
             runtime = self._runtime()
-            config = self._generation.to_dli_config(
+            config = options.to_dli_config(
                 runtime,
                 stop_token_ids=self._stop_token_ids,
                 max_context_tokens=max_context_tokens,
             )
-            generated_ids: list[int] = []
-            reply = ""
             for token_id in runtime.generate_tokens(self._backend, input_ids, config):
-                generated_ids.append(int(token_id))
-                decoded = self._tokenizer.decode(
-                    generated_ids,
-                    skip_special_tokens=True,
-                    clean_up_tokenization_spaces=False,
-                )
-                if not isinstance(decoded, str):
-                    raise TypeError("tokenizer.decode must return a string")
-                stable = decoded.split("\ufffd", 1)[0]
-                if not stable.startswith(reply):
-                    raise RuntimeError("tokenizer produced a non-prefix incremental decode")
-                chunk = stable[len(reply) :]
+                chunk = decoder.push(int(token_id))
                 if chunk:
                     emit(chunk)
-                reply = stable
-
-            decoded = self._tokenizer.decode(
-                generated_ids,
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=False,
-            )
-            if not isinstance(decoded, str):
-                raise TypeError("tokenizer.decode must return a string")
-            if not decoded.startswith(reply):
-                raise RuntimeError("tokenizer produced a non-prefix final decode")
-            chunk = decoded[len(reply) :]
+            chunk = decoder.flush()
             if chunk:
                 emit(chunk)
-            reply = decoded
-        except BaseException:
+        except KeyboardInterrupt:
+            # The backend cache stays consistent with the tokens it consumed,
+            # so the next turn can still reuse it.
+            if decoder.text:
+                self._messages.append({"role": "assistant", "content": decoder.text})
+            else:
+                self._messages.pop()
+            raise
+        except BaseException as exc:
             self._messages.pop()
             try:
                 self._reset_backend()
-            except Exception:
-                pass
+            except Exception as reset_error:
+                self._backend_needs_reset = True
+                exc.add_note(f"backend reset also failed and will be retried: {reset_error}")
             raise
 
-        self._messages.append({"role": "assistant", "content": reply})
-        return reply
+        self._messages.append({"role": "assistant", "content": decoder.text})
+        return decoder.text
 
 
 def load_session(
@@ -466,7 +516,11 @@ def run_interactive(
 
         output.write("Assistant: ")
         output.flush()
-        session.stream_reply(prompt, lambda chunk: _write_stream(chunk, output))
+        try:
+            session.stream_reply(prompt, lambda chunk: _write_stream(chunk, output))
+        except KeyboardInterrupt:
+            # Ctrl-C stops the reply; Ctrl-C at the prompt still exits.
+            output.write(" [interrupted]")
         output.write("\n")
         output.flush()
 
@@ -514,7 +568,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             top_p=args.top_p,
             top_k=args.top_k,
         )
-        generation.validate()
         session, selected_device = load_session(
             args.artifacts,
             args.model_id,

@@ -12,6 +12,9 @@ struct KVCacheEntry {
   Tensor value;
 };
 
+// Published entries are never written in place: append() replaces an entry
+// with newly allocated tensors. Copies of a KVCache may therefore share entries.
+// Operators must treat tensors returned by get() as read-only.
 class KVCache {
  public:
   void append(const std::string& name, const Tensor& key, const Tensor& value);
