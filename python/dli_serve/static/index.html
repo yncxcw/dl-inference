@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DLI Chat</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='7' fill='%232f6fde'/></svg>">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <header>
+        <h1>DLI Chat</h1>
+        <p class="model"><span class="dot" id="status-dot" aria-hidden="true"></span><span id="model-name">Connecting…</span></p>
+      </header>
+      <button id="new-chat" class="secondary" type="button">New chat</button>
+      <details class="settings" open>
+        <summary>Settings</summary>
+        <label>System prompt
+          <textarea id="system-prompt" rows="3" placeholder="You are a helpful assistant."></textarea>
+        </label>
+        <label>Temperature <output id="temperature-value"></output>
+          <input id="temperature" type="range" min="0" max="2" step="0.05">
+        </label>
+        <label>Top-p <output id="top-p-value"></output>
+          <input id="top-p" type="range" min="0.05" max="1" step="0.05">
+        </label>
+        <label>Max reply tokens
+          <input id="max-tokens" type="number" min="1" max="32768" step="1">
+        </label>
+        <label class="check"><input id="thinking" type="checkbox"> Thinking mode</label>
+        <label>API key
+          <input id="api-key" type="password" autocomplete="off" placeholder="Only if the server requires one">
+        </label>
+      </details>
+      <section class="server-stats" aria-label="Server statistics">
+        <h2>Server</h2>
+        <dl id="server-stats"></dl>
+      </section>
+    </aside>
+    <main class="chat">
+      <div class="messages" id="messages" aria-live="polite">
+        <p class="empty" id="empty-state">Ask anything to start a conversation.</p>
+      </div>
+      <form class="composer" id="composer">
+        <textarea id="prompt" rows="1" placeholder="Message the model (Enter to send, Shift+Enter for a new line)" aria-label="Message"></textarea>
+        <button id="send" type="submit">Send</button>
+      </form>
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

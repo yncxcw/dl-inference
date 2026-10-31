@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 
 import torch
@@ -84,7 +85,54 @@ def test_python_execution_state_lifecycle() -> None:
     engine.reset()
 
 
+def test_python_execution_state_copy_is_a_snapshot() -> None:
+    graph = dli.Graph.from_json(
+        json.dumps(
+            {
+                "format": "dli.graph.v1",
+                "model_type": "state_copy_test",
+                "inputs": ["one", "zero"],
+                "outputs": ["next_count"],
+                "state_inputs": {"count": "counter"},
+                "state_outputs": {"next_count": "counter"},
+                "state_initializers": {"counter": "zero"},
+                "nodes": [
+                    {
+                        "name": "increment",
+                        "op": "aten",
+                        "inputs": ["count", "one"],
+                        "outputs": ["next_count"],
+                        "attrs": {
+                            "name": "aten::add",
+                            "overload": "Tensor",
+                            "attr_order": ["alpha"],
+                            "alpha": 1.0,
+                        },
+                    }
+                ],
+            }
+        )
+    )
+    engine = dli.Engine()
+    inputs = {"one": torch.tensor([1.0]), "zero": torch.tensor([0.0])}
+
+    def step(state: dli.ExecutionState) -> float:
+        return float(engine.run(graph, inputs, state=state)["next_count"].item())
+
+    state = dli.ExecutionState()
+    assert step(state) == 1.0
+    snapshot = state.copy()
+    assert snapshot.tensor_count == state.tensor_count == 1
+    assert step(state) == 2.0
+    # The snapshot resumes from where it was taken, independent of the original.
+    assert step(snapshot) == 2.0
+    assert step(state) == 3.0
+    assert step(copy.copy(snapshot)) == 3.0
+    assert step(snapshot) == 3.0
+
+
 if __name__ == "__main__":
     test_python_engine_runs_aten_graph()
     test_python_graph_round_trip()
     test_python_execution_state_lifecycle()
+    test_python_execution_state_copy_is_a_snapshot()

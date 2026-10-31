@@ -1,0 +1,151 @@
+:root {
+  --bg: #f7f7f8;
+  --panel: #ffffff;
+  --text: #1f2328;
+  --muted: #667085;
+  --border: #d9dce1;
+  --accent: #2f6fde;
+  --accent-text: #ffffff;
+  --user: #e8f0fe;
+  --code: #f0f2f5;
+  --ok: #1f9d55;
+  --bad: #d64545;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171a;
+    --panel: #1d2024;
+    --text: #e6e8eb;
+    --muted: #9aa3ad;
+    --border: #30353b;
+    --accent: #5b8def;
+    --user: #24324a;
+    --code: #262a30;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  height: 100vh;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  overflow-y: auto;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+
+h1 { margin: 0; font-size: 20px; }
+h2 { margin: 0 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.model { margin: 4px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.dot.ok { background: var(--ok); }
+.dot.bad { background: var(--bad); }
+
+label { display: block; margin-top: 10px; font-size: 13px; color: var(--muted); }
+label.check { display: flex; align-items: center; gap: 8px; color: var(--text); }
+output { float: right; color: var(--text); }
+
+input[type="range"], input[type="number"], input[type="password"], textarea {
+  width: 100%;
+  margin-top: 4px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+input[type="number"], input[type="password"], textarea { padding: 6px 8px; }
+.settings summary { cursor: pointer; font-weight: 600; }
+
+button {
+  padding: 8px 16px;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+button.secondary { color: var(--text); background: transparent; border: 1px solid var(--border); }
+button.stop { background: var(--bad); }
+button:disabled { opacity: 0.6; cursor: default; }
+
+.server-stats dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin: 0; font-size: 13px; }
+.server-stats dt { color: var(--muted); }
+.server-stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+.chat { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px max(24px, calc((100% - 820px) / 2));
+}
+
+.empty { margin-top: 30vh; text-align: center; color: var(--muted); }
+
+.message { margin-bottom: 18px; }
+.message .body { padding: 10px 14px; border-radius: 12px; overflow-wrap: anywhere; }
+.message.user .body { margin-left: auto; width: fit-content; max-width: 85%; background: var(--user); }
+.message.assistant .body { background: var(--panel); border: 1px solid var(--border); }
+.message.error .body { border-color: var(--bad); }
+.message .meta { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.message.user .meta { text-align: right; }
+
+.thinking { margin-bottom: 8px; color: var(--muted); font-size: 14px; }
+.thinking summary { cursor: pointer; }
+
+pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: var(--code);
+  border-radius: 8px;
+}
+code { font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+:not(pre) > code { padding: 1px 4px; background: var(--code); border-radius: 4px; }
+
+.cursor::after { content: "▍"; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+.composer {
+  display: flex;
+  gap: 10px;
+  padding: 14px max(24px, calc((100% - 820px) / 2)) 20px;
+  border-top: 1px solid var(--border);
+}
+.composer textarea { flex: 1; max-height: 40vh; margin: 0; resize: none; }
+
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; }
+  .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+  .settings:not([open]) ~ .server-stats { display: none; }
+  .chat { height: 80vh; }
+}

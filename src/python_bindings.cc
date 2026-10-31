@@ -68,6 +68,12 @@ PYBIND11_MODULE(_dli_native, m) {
   py::class_<dli::ExecutionState>(m, "ExecutionState")
       .def(py::init<>())
       .def("reset", &dli::ExecutionState::reset)
+      // Engine::run publishes replacement tensors instead of writing state in
+      // place, so a shallow copy is an isolated snapshot that shares storage.
+      .def(
+          "copy", [](const dli::ExecutionState& state) { return dli::ExecutionState(state); },
+          "Return an isolated snapshot of this state without copying tensor data.")
+      .def("__copy__", [](const dli::ExecutionState& state) { return dli::ExecutionState(state); })
       .def_property_readonly(
           "cache_size", [](const dli::ExecutionState& state) { return state.kvCache().size(); })
       .def_property_readonly("tensor_count", &dli::ExecutionState::tensorCount);

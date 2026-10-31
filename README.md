@@ -170,6 +170,51 @@ top-k/top-p filtering, stop tokens, deterministic seeds, and a context limit.
 Prompt prefill is currently token-by-token; chunked prefill is a future
 optimization.
 
+`state.copy()` returns an isolated snapshot without copying tensor data, because
+`Engine.run` publishes replacement state tensors instead of writing in place.
+
+## Chat Server
+
+`dli_serve` serves an exported bundle behind an OpenAI-compatible HTTP API, in
+the style of `vllm serve`, with a browser chat UI. `dli_client` is a
+dependency-free Python client with the same shape as the `openai` package, which
+also works unchanged. The design is in `.codex/chat_server_design.md`.
+
+```bash
+python -m pip install fastapi uvicorn transformers
+python -m dli_export.causal_lm --model-id Qwen/Qwen3.5-0.8B \
+  --output-dir artifacts/qwen3_5-0.8b --max-context-tokens 4096
+python -m dli_serve --artifacts artifacts/qwen3_5-0.8b/qwen3.5-0.8b.dli.bundle.json
+```
+
+Open `http://127.0.0.1:8000/` for the chat UI, or call the API:
+
+```python
+from dli_client import Client
+
+client = Client(base_url="http://127.0.0.1:8000/v1")
+for chunk in client.chat.completions.create(
+    model="Qwen/Qwen3.5-0.8B",
+    messages=[{"role": "user", "content": "Hello!"}],
+    stream=True,
+):
+    if chunk.choices:
+        print(chunk.choices[0].delta.content or "", end="", flush=True)
+```
+
+`python -m dli_client` is a terminal chat against the same server. Endpoints:
+`/v1/chat/completions` and `/v1/completions` (streaming or not),
+`/v1/models`, `/health`, and `/stats`.
+
+The server reuses KV state at three levels: within a request, each sequence
+keeps its `ExecutionState`, so no token is recomputed; across turns and
+requests, a prefix cache of state snapshots lets a prompt resume from the
+longest cached prefix; and `--max-num-seqs` and `--prefix-cache-size` bound the
+memory. Reuse is reported as `usage.prompt_tokens_details.cached_tokens`.
+Requests are interleaved one model step at a time, so concurrent clients all
+stream. Useful flags: `--api-key`, `--enable-thinking`, `--max-tokens`,
+`--allow-origin`, and `--served-model-name`.
+
 ## Python Binding
 
 Build and install the Python wheel with:

@@ -14,6 +14,13 @@ requires-python = ">=3.10"
 license = { file = "LICENSE" }
 dependencies = ["torch>=2.7"]
 
+[project.optional-dependencies]
+serve = ["fastapi>=0.110", "uvicorn>=0.29", "transformers>=5.2"]
+
+[project.scripts]
+dli-serve = "dli_serve.__main__:main"
+dli-chat = "dli_client.__main__:main"
+
 [tool.scikit-build]
 cmake.build-type = "Release"
 cmake.args = [
@@ -27,6 +34,8 @@ wheel.packages = [
   "python/dli",
   "python/dli_export",
   "python/dli_ops",
+  "python/dli_serve",
+  "python/dli_client",
 ]
 
 [tool.black]

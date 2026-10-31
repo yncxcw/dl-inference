@@ -337,6 +337,22 @@ if(DLI_BUILD_TESTS)
       set_tests_properties(dli_py_dli_module PROPERTIES
         ENVIRONMENT "PYTHONPATH=${DLI_PYTHON_NATIVE_PATH};PYTHONDONTWRITEBYTECODE=1"
       )
+
+      add_test(
+        NAME dli_py_dli_serve
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_dli_serve.py
+      )
+      set_tests_properties(dli_py_dli_serve PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${DLI_PYTHON_NATIVE_PATH};PYTHONDONTWRITEBYTECODE=1"
+      )
+
+      add_test(
+        NAME dli_py_dli_client
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_dli_client.py
+      )
+      set_tests_properties(dli_py_dli_client PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${DLI_PYTHON_NATIVE_PATH};PYTHONDONTWRITEBYTECODE=1"
+      )
     endif()
 
     if(TARGET dli_triton_aot_ops)
