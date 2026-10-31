@@ -10,7 +10,8 @@ class AddOp final : public dli::Operator {
     int total = static_cast<int>(inputs[0]->numel()); int width = static_cast<int>(inputs[1]->numel());
     void* a = ptr(*inputs[0]); void* b = ptr(*inputs[1]); void* out = ptr(*outputs[0]);
     void* triton_scratch = nullptr;
-    void* args[] = {&a, &b, &out, &total, &width, &triton_scratch};
+    void* triton_profile_scratch = nullptr;
+    void* args[] = {&a, &b, &out, &total, &width, &triton_scratch, &triton_profile_scratch};
     add_{{HASH_add}}_kernel().launch(args, ceilDiv(total, 256), 1, 1, 4 * 32);
   }
 };

@@ -24,7 +24,8 @@ class MatmulOp final : public dli::Operator {
     *outputs[0] = dli::Tensor::cuda(dli::DType::Float32, {m, n}, inputs[0]->deviceId());
     void* a = ptr(*inputs[0]); void* b = ptr(*inputs[1]); void* out = ptr(*outputs[0]);
     void* triton_scratch = nullptr;
-    void* args[] = {&a, &b, &out, const_cast<int*>(&m), const_cast<int*>(&n), &triton_scratch};
+    void* triton_profile_scratch = nullptr;
+    void* args[] = {&a, &b, &out, const_cast<int*>(&m), const_cast<int*>(&n), &triton_scratch, &triton_profile_scratch};
     matmulKernel(inputs[0]->dim(1)).launch(args, ceilDiv(m, 16), ceilDiv(n, 16), 1, 4 * 32);
   }
 };

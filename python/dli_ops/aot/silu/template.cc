@@ -10,7 +10,8 @@ class SiluOp final : public dli::Operator {
     int total = static_cast<int>(inputs[0]->numel());
     void* x = ptr(*inputs[0]); void* out = ptr(*outputs[0]);
     void* triton_scratch = nullptr;
-    void* args[] = {&x, &out, &total, &triton_scratch};
+    void* triton_profile_scratch = nullptr;
+    void* args[] = {&x, &out, &total, &triton_scratch, &triton_profile_scratch};
     silu_{{HASH_silu}}_kernel().launch(args, ceilDiv(total, 256), 1, 1, 4 * 32);
   }
 };

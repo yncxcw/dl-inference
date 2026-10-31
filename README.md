@@ -279,21 +279,24 @@ static dli::CudaAotKernel& linear_k4_b1_ab12cd34_kernel() {
 `CudaAotKernel` lazily calls `cuModuleLoadData` on that byte array and
 `cuModuleGetFunction("linear_kernel")` before launch.
 
-Triton's compiled CUDA entry point includes a trailing global scratch pointer
-parameter in the PTX signature. The framework rejects kernels that require
-non-zero global scratch bytes today, but the launch ABI still needs the pointer
-slot. Each AOT template appends a null argument:
+Triton's compiled CUDA entry point ends with trailing scratch pointer
+parameters in the PTX signature: global scratch and, in newer Triton releases
+such as 3.9, profile scratch. The framework rejects kernels that require
+non-zero scratch bytes today, but the launch ABI still needs the pointer slots.
+Each AOT template appends a null argument for each:
 
 ```cpp
 void* triton_scratch = nullptr;
+void* triton_profile_scratch = nullptr;
 void* args[] = {
-    &x, &weight, &bias, &out, &m, &n, &triton_scratch,
+    &x, &weight, &bias, &out, &m, &n, &triton_scratch, &triton_profile_scratch,
 };
 ```
 
-Without this final `&triton_scratch` entry, `cuLaunchKernel` receives fewer
-argument pointers than the cubin metadata declares and can segfault inside the
-CUDA driver.
+Without these trailing entries, `cuLaunchKernel` receives fewer argument
+pointers than the cubin metadata declares and can segfault inside the CUDA
+driver. Older Triton releases that declare only the global scratch pointer read
+just the parameters they declare and ignore the extra entry.
 
 The generated plugin exports:
 

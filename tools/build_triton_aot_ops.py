@@ -104,9 +104,11 @@ def compile_spec(modules: dict[str, object], spec: AotSpec, arch: int) -> Compil
         target=GPUTarget("cuda", arch, 32),
         options={"num_warps": spec.num_warps, "num_stages": spec.num_stages},
     )
-    scratch = int(getattr(ccinfo.metadata, "global_scratch_size", 0))
-    if scratch > 0:
-        raise RuntimeError(f"{spec.id}: global scratch AOT kernels are not supported")
+    # Templates pass null for Triton's trailing scratch pointers, so kernels
+    # must not need scratch memory behind them.
+    for kind in ("global", "profile"):
+        if int(getattr(ccinfo.metadata, f"{kind}_scratch_size", 0)) > 0:
+            raise RuntimeError(f"{spec.id}: {kind} scratch AOT kernels are not supported")
     suffix = hash_signature(spec.signature, spec.num_warps, spec.num_stages)
     return CompiledSpec(
         spec=spec,

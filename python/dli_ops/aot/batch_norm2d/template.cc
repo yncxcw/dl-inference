@@ -25,9 +25,10 @@ class BatchNorm2dOp final : public dli::Operator {
     void* running_var = ptr(*inputs[4]);
     void* out = ptr(*outputs[0]);
     void* triton_scratch = nullptr;
+    void* triton_profile_scratch = nullptr;
     void* args[] = {&x, &weight, &bias, &running_mean, &running_var, &out,
                     const_cast<int*>(&total), const_cast<int*>(&channels),
-                    const_cast<int*>(&spatial), const_cast<float*>(&eps), &triton_scratch};
+                    const_cast<int*>(&spatial), const_cast<float*>(&eps), &triton_scratch, &triton_profile_scratch};
     batch_norm2d_{{HASH_batch_norm2d}}_kernel().launch(args, ceilDiv(total, 256), 1, 1, 4 * 32);
   }
 };
