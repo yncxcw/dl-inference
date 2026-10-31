@@ -68,7 +68,8 @@ class RotaryOp final : public dli::Operator {
     void* q = ptr(*inputs[0]); void* k = ptr(*inputs[1]); void* cos = ptr(*inputs[2]); void* sin = ptr(*inputs[3]);
     void* out_q = ptr(*outputs[0]); void* out_k = ptr(*outputs[1]);
     void* triton_scratch = nullptr;
-    void* args[] = {&q, &k, &cos, &sin, &out_q, &out_k, &q_total_pairs, &k_total_pairs, &start_pos, &triton_scratch};
+    void* triton_profile_scratch = nullptr;
+    void* args[] = {&q, &k, &cos, &sin, &out_q, &out_k, &q_total_pairs, &k_total_pairs, &start_pos, &triton_scratch, &triton_profile_scratch};
     kernel->launch(args, ceilDiv(total_pairs, 128), 1, 1, 4 * 32);
   }
 };

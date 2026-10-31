@@ -91,11 +91,12 @@ class AttentionOp final : public dli::Operator {
     }
     void* q = ptr(*inputs[0]); void* k = ptr(*inputs[1]); void* v = ptr(*inputs[2]); void* out = ptr(*outputs[0]);
     void* triton_scratch = nullptr;
+    void* triton_profile_scratch = nullptr;
     int runtime_seq_q = seq_q;
     int runtime_seq_k = seq_k;
-    void* fixed_args[] = {&q, &k, &v, &out, const_cast<int*>(&q_heads), const_cast<int*>(&kv_heads), &triton_scratch};
+    void* fixed_args[] = {&q, &k, &v, &out, const_cast<int*>(&q_heads), const_cast<int*>(&kv_heads), &triton_scratch, &triton_profile_scratch};
     void* decode_args[] = {&q, &k, &v, &out, &runtime_seq_q, &runtime_seq_k,
-                           const_cast<int*>(&q_heads), const_cast<int*>(&kv_heads), &triton_scratch};
+                           const_cast<int*>(&q_heads), const_cast<int*>(&kv_heads), &triton_scratch, &triton_profile_scratch};
     kernel->launch(seq_q == 1 ? decode_args : fixed_args, batch_heads, ceilDiv(seq_q, 16), 1, 4 * 32);
   }
 };
