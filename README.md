@@ -74,7 +74,7 @@ python3 -c "import torch; print(torch.utils.cmake_prefix_path)"
 ## Continuous Integration
 
 GitHub Actions runs the CPU-safe build for every pull request and every push to
-`main`. The workflow uses Python 3.11, PyTorch 2.8, and Triton 3.4:
+`main`. The workflow uses Python 3.14, PyTorch 2.15, and Triton 3.9:
 
 ```text
 .github/workflows/ci.yml
