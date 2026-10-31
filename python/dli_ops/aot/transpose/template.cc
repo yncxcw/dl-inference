@@ -14,7 +14,8 @@ class TransposeOp final : public dli::Operator {
     *outputs[0] = dli::Tensor::cuda(dli::DType::Float32, {cols, rows}, inputs[0]->deviceId());
     void* x = ptr(*inputs[0]); void* out = ptr(*outputs[0]);
     void* triton_scratch = nullptr;
-    void* args[] = {&x, &out, &rows, &cols, &triton_scratch};
+    void* triton_profile_scratch = nullptr;
+    void* args[] = {&x, &out, &rows, &cols, &triton_scratch, &triton_profile_scratch};
     transpose2d_{{HASH_transpose2d}}_kernel().launch(args, ceilDiv(rows, 16), ceilDiv(cols, 16), 1, 4 * 32);
   }
 };

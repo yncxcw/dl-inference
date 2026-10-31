@@ -25,7 +25,8 @@ class EmbeddingOp final : public dli::Operator {
     int total = static_cast<int>(inputs[0]->numel());
     void* ids = ptr(*inputs[0]); void* table = ptr(*inputs[1]); void* out = ptr(*outputs[0]);
     void* triton_scratch = nullptr;
-    void* args[] = {&ids, &table, &out, &total, &triton_scratch};
+    void* triton_profile_scratch = nullptr;
+    void* args[] = {&ids, &table, &out, &total, &triton_scratch, &triton_profile_scratch};
     embeddingKernel(inputs[1]->dim(1)).launch(args, ceilDiv(total, 16), ceilDiv(inputs[1]->dim(1), 32), 1, 4 * 32);
   }
 };

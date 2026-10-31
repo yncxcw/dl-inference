@@ -25,7 +25,8 @@ class AttentionOp final : public dli::Operator {
     *outputs[0] = dli::Tensor::cuda(dli::DType::Float32, inputs[0]->shape(), inputs[0]->deviceId());
     void* q = ptr(*inputs[0]); void* k = ptr(*inputs[1]); void* v = ptr(*inputs[2]); void* out = ptr(*outputs[0]);
     void* triton_scratch = nullptr;
-    void* args[] = {&q, &k, &v, &out, &triton_scratch};
+    void* triton_profile_scratch = nullptr;
+    void* args[] = {&q, &k, &v, &out, &triton_scratch, &triton_profile_scratch};
     dli::CudaAotKernel* kernel = nullptr;
     if (seq_q == 1 && seq_k == 1 && head_dim == 2 && !causal) kernel = &attention_q1_k1_d2_c0_{{HASH_attention_q1_k1_d2_c0}}_kernel();
     if (seq_q == 1 && seq_k == 1 && head_dim == 2 && causal) kernel = &attention_q1_k1_d2_c1_{{HASH_attention_q1_k1_d2_c1}}_kernel();
