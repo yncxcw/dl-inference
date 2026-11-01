@@ -265,9 +265,7 @@ def test_exported_program_rejects_tensor_dtypes_the_runtime_cannot_preserve() ->
 
 
 def test_lifted_weight_name_does_not_alias_same_named_user_input() -> None:
-    program = torch.export.export(
-        UserInputMatchesParameter(), (torch.tensor([2.0]),), strict=True
-    )
+    program = torch.export.export(UserInputMatchesParameter(), (torch.tensor([2.0]),), strict=True)
     with tempfile.TemporaryDirectory() as tmp:
         graph_path, weights_path = exported_program_to_dli(program, tmp, stem="namespaced")
         graph = _load(graph_path)
