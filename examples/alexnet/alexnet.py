@@ -1,3 +1,5 @@
+"""A tiny AlexNet-style CNN used as an end-to-end DLI example."""
+
 from __future__ import annotations
 
 import torch
@@ -5,7 +7,14 @@ from torch import nn
 
 
 class TinyAlexNet(nn.Module):
+    """Two conv/ReLU/max-pool stages followed by a two-layer classifier.
+
+    Expects float32 input of shape ``[N, 3, 32, 32]`` (two 2x2 pools leave 8x8
+    feature maps, matching the first ``Linear`` layer) and returns ``[N, 4]``.
+    """
+
     def __init__(self) -> None:
+        """Builds the feature extractor and classifier."""
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(3, 8, kernel_size=3, padding=1),
@@ -23,10 +32,24 @@ class TinyAlexNet(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Runs the network.
+
+        Args:
+            x: Input of shape ``[N, 3, 32, 32]``.
+
+        Returns:
+            Logits of shape ``[N, 4]``.
+        """
         return self.classifier(self.features(x))
 
 
 def create_model() -> nn.Module:
+    """Creates an eval-mode model with deterministic parameters.
+
+    Returns:
+        A ``TinyAlexNet`` whose weights are a fixed arithmetic pattern, so exports
+        and outputs are reproducible without a checkpoint.
+    """
     torch.manual_seed(7)
     model = TinyAlexNet().eval()
     for name, param in model.named_parameters():

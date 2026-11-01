@@ -1,3 +1,5 @@
+"""Numeric test comparing the DLI attention operator with PyTorch."""
+
 from __future__ import annotations
 
 import math
@@ -10,7 +12,10 @@ from operator_test_support import CUDA_AVAILABLE, assert_close, run_operator
 
 @unittest.skipUnless(CUDA_AVAILABLE, "CUDA device is not available")
 class AttentionOperatorNumericsTest(unittest.TestCase):
+    """Checks the attention operator against its PyTorch reference."""
+
     def test_attention(self) -> None:
+        """Verifies the attention operator output matches PyTorch within tolerance."""
         q = torch.tensor([[[[0.2, -0.4], [1.0, 0.5]], [[-0.3, 0.7], [0.8, -0.6]]]])
         k = torch.tensor([[[[0.1, 0.9], [-0.5, 0.2]], [[0.6, -0.1], [0.3, 0.4]]]])
         v = torch.tensor([[[[1.0, -1.0], [0.5, 0.25]], [[-0.2, 0.8], [1.2, -0.7]]]])

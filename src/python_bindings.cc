@@ -1,3 +1,8 @@
+/**
+ * @file python_bindings.cc
+ * @brief pybind11 module `_dli_native` exposing Graph, Engine and load_weights to Python.
+ */
+
 #include <ATen/ATen.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -17,6 +22,7 @@ namespace py = pybind11;
 namespace dli {
 namespace {
 
+/// Converts a Python dict of name to torch.Tensor into a TensorMap.
 TensorMap tensorMapFromPython(const py::dict& tensors) {
   TensorMap result;
   for (const auto& item : tensors) {
@@ -27,6 +33,7 @@ TensorMap tensorMapFromPython(const py::dict& tensors) {
   return result;
 }
 
+/// Converts a TensorMap into a Python dict of name to torch.Tensor.
 py::dict tensorMapToPython(const TensorMap& tensors) {
   py::dict result;
   for (const auto& [name, tensor] : tensors) {
@@ -35,12 +42,14 @@ py::dict tensorMapToPython(const TensorMap& tensors) {
   return result;
 }
 
+/// Runs the graph with the GIL released; inputs are converted first because that needs the GIL.
 TensorMap runGraph(Engine& engine, const Graph& graph, const py::dict& inputs) {
   auto tensor_inputs = tensorMapFromPython(inputs);
   py::gil_scoped_release release;
   return engine.run(graph, std::move(tensor_inputs));
 }
 
+/// Parses a device string such as "cpu" or "cuda".
 DeviceType parseDevice(const std::string& device) { return deviceFromString(device); }
 
 }  // namespace

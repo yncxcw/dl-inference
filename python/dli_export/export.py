@@ -1,3 +1,11 @@
+"""Exports PyTorch models to the DLI graph (``dli.graph.v1``) and weights formats.
+
+Generic ``torch.nn.Module`` instances are traced with ``torch.fx`` and lowered
+node by node. Hugging Face Qwen2 causal LMs take a dedicated path because
+their attention, rotary embedding and KV cache are not FX-traceable. The module
+can also be run as a CLI via ``python -m dli_export.export``.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -15,7 +23,7 @@ from .weights import WeightWriter
 
 
 class ExportError(RuntimeError):
-    pass
+    """Raised when a model uses a construct the exporter cannot represent."""
 
 
 def _node(
@@ -26,6 +34,16 @@ def _node(
     outputs: list[str],
     attrs: dict[str, Any] | None = None,
 ) -> None:
+    """Appends a graph node description to ``nodes``.
+
+    Args:
+        nodes: Node list being built; modified in place.
+        name: Unique node name.
+        op: DLI operator type, e.g. ``"linear"``.
+        inputs: Names of input tensors (graph values or weights).
+        outputs: Names of output tensors.
+        attrs: Optional operator attributes; omitted from the node when empty.
+    """
     item: dict[str, Any] = {
         "name": name,
         "op": op,
@@ -38,6 +56,16 @@ def _node(
 
 
 def _write_graph(output_dir: Path, stem: str, graph: dict[str, Any]) -> Path:
+    """Writes the graph description as ``<stem>.dli.json``.
+
+    Args:
+        output_dir: Destination directory; created if missing.
+        stem: File name prefix.
+        graph: JSON-serializable graph description.
+
+    Returns:
+        Path of the written graph file.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"{stem}.dli.json"
     path.write_text(json.dumps(graph, indent=2), encoding="utf-8")
@@ -45,6 +73,17 @@ def _write_graph(output_dir: Path, stem: str, graph: dict[str, Any]) -> Path:
 
 
 def _shape_from_meta(node: torch.fx.Node) -> list[int]:
+    """Returns the output shape recorded on an FX node by ``ShapeProp``.
+
+    Args:
+        node: FX node that has been through shape propagation.
+
+    Returns:
+        The node's output shape.
+
+    Raises:
+        ExportError: If the node carries no tensor metadata.
+    """
     meta = node.meta.get("tensor_meta")
     if meta is None:
         raise ExportError(f"missing tensor metadata for node {node.name}")
@@ -58,6 +97,22 @@ def _export_fx(
     model_type: str,
     stem: str,
 ) -> tuple[Path, Path]:
+    """Exports a generic module by tracing it with ``torch.fx``.
+
+    Args:
+        model: Module to export; it is switched to eval mode.
+        example_inputs: Example tensors used for shape propagation.
+        output_dir: Directory for the graph and weight files.
+        model_type: Value recorded as ``model_type`` in the graph.
+        stem: File name prefix.
+
+    Returns:
+        A ``(graph_path, weights_manifest_path)`` tuple.
+
+    Raises:
+        ExportError: If there are no example inputs or the model contains an
+            unsupported module, call or node kind.
+    """
     if not example_inputs:
         raise ExportError("FX export requires at least one example input")
     traced = torch.fx.symbolic_trace(model.eval())
@@ -71,6 +126,7 @@ def _export_fx(
     modules = dict(traced.named_modules())
 
     def add_param(name: str, tensor: torch.Tensor) -> str:
+        """Registers a weight and returns its graph value name."""
         return weights.add(name, tensor)
 
     for fx_node in traced.graph.nodes:
@@ -101,6 +157,8 @@ def _export_fx(
                     )
                 if module.running_mean is None or module.running_var is None:
                     raise ExportError("BatchNorm2d export requires running_mean and running_var")
+                # affine=False layers have no weight/bias; the runtime op always
+                # expects them, so substitute the identity transform.
                 weight = (
                     module.weight
                     if module.weight is not None
@@ -137,6 +195,7 @@ def _export_fx(
             elif isinstance(module, torch.nn.ReLU):
                 _node(nodes, fx_node.name, "relu", [x], [out])
             elif isinstance(module, torch.nn.MaxPool2d):
+                # PyTorch allows scalar or tuple values; the runtime wants pairs.
                 kernel = (
                     module.kernel_size
                     if isinstance(module.kernel_size, tuple)
@@ -207,6 +266,7 @@ def _export_fx(
 
 
 def _is_qwen2_causal_lm(model: torch.nn.Module) -> bool:
+    """Returns whether ``model`` looks like a Hugging Face Qwen2 causal LM."""
     config = getattr(model, "config", None)
     return (
         getattr(config, "model_type", None) == "qwen2"
@@ -218,6 +278,17 @@ def _is_qwen2_causal_lm(model: torch.nn.Module) -> bool:
 def _linear_inputs(
     weights: WeightWriter, prefix: str, module: torch.nn.Module, source: str
 ) -> list[str]:
+    """Registers a linear layer's weights and builds its node input list.
+
+    Args:
+        weights: Writer that receives the weight (and bias, if present).
+        prefix: Parameter name prefix, e.g. ``"model.layers.0.mlp.up_proj"``.
+        module: Layer exposing ``weight`` and optionally ``bias``.
+        source: Name of the activation tensor fed to the layer.
+
+    Returns:
+        ``[source, weight]`` plus the bias name when the layer has a bias.
+    """
     inputs = [source, weights.add(f"{prefix}.weight", module.weight)]
     bias = getattr(module, "bias", None)
     if bias is not None:
@@ -226,6 +297,17 @@ def _linear_inputs(
 
 
 def _qwen2_rotary_tables(config: Any) -> tuple[torch.Tensor, torch.Tensor]:
+    """Precomputes the rotary embedding cos/sin tables for a Qwen2 config.
+
+    Args:
+        config: Hugging Face model config.
+
+    Returns:
+        ``(cos, sin)`` tensors, each of shape ``[max_position_embeddings, head_dim // 2]``.
+
+    Raises:
+        ExportError: If the head dimension is invalid or RoPE scaling is used.
+    """
     hidden = int(config.hidden_size)
     heads = int(config.num_attention_heads)
     head_dim = hidden // heads
@@ -234,6 +316,8 @@ def _qwen2_rotary_tables(config: Any) -> tuple[torch.Tensor, torch.Tensor]:
     if head_dim % 2 != 0:
         raise ExportError("Qwen2 rotary export requires an even attention head dimension")
     rope_scaling = getattr(config, "rope_scaling", None) or getattr(config, "rope_parameters", None)
+    # Newer transformers always populate rope parameters, even for plain RoPE,
+    # so treat an explicit "default" type as no scaling.
     if isinstance(rope_scaling, dict) and rope_scaling.get("rope_type", "default") == "default":
         rope_scaling = None
     if rope_scaling not in (None, {}):
@@ -250,6 +334,24 @@ def _qwen2_rotary_tables(config: Any) -> tuple[torch.Tensor, torch.Tensor]:
 def _export_qwen2_causal_lm(
     model: torch.nn.Module, output_dir: Path, model_type: str, stem: str
 ) -> tuple[Path, Path]:
+    """Exports a Qwen2 causal LM as a single-token decode graph with a KV cache.
+
+    Each attention layer is emitted with a ``kv_cache`` attribute so the runtime
+    can keep per-layer key/value state; activations use a sequence length of 1.
+
+    Args:
+        model: Hugging Face ``Qwen2ForCausalLM``-like module.
+        output_dir: Directory for the graph and weight files.
+        model_type: Value recorded as ``model_type`` in the graph.
+        stem: File name prefix.
+
+    Returns:
+        A ``(graph_path, weights_manifest_path)`` tuple.
+
+    Raises:
+        ExportError: If the model uses grouped-query attention, an indivisible
+            hidden size, or non-default RoPE.
+    """
     config = model.config
     hidden = int(config.hidden_size)
     heads = int(config.num_attention_heads)
@@ -464,6 +566,25 @@ def export_module(
     model_type: str = "pytorch_fx",
     stem: str = "model",
 ) -> tuple[Path, Path]:
+    """Exports a PyTorch module to DLI graph and weight files.
+
+    Qwen2 causal LMs are detected automatically and exported with a dedicated
+    decode graph; everything else goes through ``torch.fx`` tracing.
+
+    Args:
+        model: Module to export.
+        example_inputs: Example inputs for shape propagation (FX path only).
+        output_dir: Directory for the output files; created if missing.
+        model_type: Value recorded as ``model_type`` in the graph. For Qwen2
+            models the default is replaced by ``"qwen2"``.
+        stem: File name prefix for the output files.
+
+    Returns:
+        A ``(graph_path, weights_manifest_path)`` tuple.
+
+    Raises:
+        ExportError: If the model cannot be represented in the DLI format.
+    """
     output = Path(output_dir)
     if _is_qwen2_causal_lm(model):
         return _export_qwen2_causal_lm(
@@ -473,6 +594,17 @@ def export_module(
 
 
 def _load_factory(spec: str) -> Callable[..., torch.nn.Module]:
+    """Resolves a ``module:function`` string to a model factory.
+
+    Args:
+        spec: Import path of the form ``package.module:function``.
+
+    Returns:
+        The callable named by ``spec``.
+
+    Raises:
+        ExportError: If ``spec`` is malformed or does not name a callable.
+    """
     module_name, _, attr = spec.partition(":")
     if not module_name or not attr:
         raise ExportError("--model must be module:function")
@@ -484,10 +616,24 @@ def _load_factory(spec: str) -> Callable[..., torch.nn.Module]:
 
 
 def _parse_shape(text: str) -> tuple[int, ...]:
+    """Parses a comma-separated shape such as ``"1,3,224,224"``."""
     return tuple(int(item) for item in text.split(",") if item)
 
 
 def _parse_model_kwargs(items: list[str]) -> dict[str, Any]:
+    """Parses ``key=value`` items into factory keyword arguments.
+
+    Values are decoded as JSON when possible and kept as plain strings otherwise.
+
+    Args:
+        items: Strings of the form ``key=value``.
+
+    Returns:
+        Mapping of keyword names to decoded values.
+
+    Raises:
+        ExportError: If an item has no ``=``.
+    """
     kwargs: dict[str, Any] = {}
     for item in items:
         key, sep, value = item.partition("=")
@@ -501,6 +647,11 @@ def _parse_model_kwargs(items: list[str]) -> dict[str, Any]:
 
 
 def main() -> int:
+    """Command-line entry point.
+
+    Returns:
+        Process exit code (0 on success).
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True, help="Python model factory as module:function")
     parser.add_argument("--example-shape", action="append", default=[])

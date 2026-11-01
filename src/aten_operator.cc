@@ -1,3 +1,9 @@
+/**
+ * @file aten_operator.cc
+ * @brief Implements the generic "aten" operator that boxes arguments and calls PyTorch's
+ * dispatcher.
+ */
+
 #include "dli/aten_operator.h"
 
 #include <ATen/ATen.h>
@@ -16,6 +22,7 @@
 namespace dli {
 namespace {
 
+/// Converts a stored attribute into a boxed c10::IValue (lists become typed IValue lists).
 c10::IValue attributeToIValue(const AttributeValue& value) {
   return std::visit(
       [](const auto& item) -> c10::IValue {
@@ -35,6 +42,7 @@ c10::IValue attributeToIValue(const AttributeValue& value) {
       value);
 }
 
+/// Looks up the attribute @p name and boxes it; throws std::invalid_argument if it is missing.
 c10::IValue attributeToIValue(const Attributes& attrs, const std::string& name) {
   const auto it = attrs.values().find(name);
   if (it == attrs.values().end()) {
@@ -43,6 +51,7 @@ c10::IValue attributeToIValue(const Attributes& attrs, const std::string& name) 
   return attributeToIValue(it->second);
 }
 
+/// Flattens an ATen return value (tensor, tensor list or tuple of tensors) into a vector.
 std::vector<at::Tensor> tensorsFromIValue(const c10::IValue& value) {
   if (value.isTensor()) return {value.toTensor()};
   if (value.isTensorList()) return value.toTensorVector();
@@ -58,6 +67,7 @@ std::vector<at::Tensor> tensorsFromIValue(const c10::IValue& value) {
   throw std::invalid_argument("aten operator output is not a tensor, tensor list, or tensor tuple");
 }
 
+/// Operator that runs any registered ATen schema selected by the node's attributes.
 class AtenOperator final : public Operator {
  public:
   std::string type() const override { return "aten"; }

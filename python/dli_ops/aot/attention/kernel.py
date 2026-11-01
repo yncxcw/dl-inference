@@ -1,3 +1,5 @@
+"""Triton AOT kernel for fused scaled dot-product attention."""
+
 import triton
 import triton.language as tl
 
@@ -17,6 +19,27 @@ def attention_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
+    """Flash-attention style softmax(q k^T * scale) v with an online softmax.
+
+    Batch and heads are flattened into one leading dimension ``BH``. K/V may be
+    longer than Q (``seq_k >= seq_q``), in which case queries are aligned to the
+    end of the key sequence for causal masking. Launch grid:
+    ``(BH, cdiv(seq_q, BLOCK_M))``.
+
+    Args:
+        q: Pointer to the contiguous ``[BH, seq_q, head_dim]`` queries.
+        k: Pointer to the contiguous ``[BH, seq_k, head_dim]`` keys.
+        v: Pointer to the contiguous ``[BH, seq_k, head_dim]`` values.
+        out: Pointer to the contiguous ``[BH, seq_q, head_dim]`` output.
+        seq_q: Query sequence length.
+        seq_k: Key/value sequence length.
+        head_dim: Per-head feature size.
+        causal: Whether to apply a causal mask.
+        scale: Multiplier applied to the scores (usually ``1/sqrt(head_dim)``).
+        BLOCK_M: Query tile size.
+        BLOCK_N: Key/value tile size.
+        BLOCK_D: Power-of-two tile covering ``head_dim`` (>= ``head_dim``).
+    """
     pid_bh = tl.program_id(0)
     pid_m = tl.program_id(1)
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -29,9 +52,11 @@ def attention_kernel(
         mask=(offs_m[:, None] < seq_q) & (offs_d[None, :] < head_dim),
         other=0.0,
     )
+    # Online softmax state: running row max, normalizer and weighted accumulator.
     m_i = tl.full((BLOCK_M,), -float("inf"), tl.float32)
     l_i = tl.zeros((BLOCK_M,), tl.float32)
     acc = tl.zeros((BLOCK_M, BLOCK_D), tl.float32)
+    # Queries sit at the end of the key sequence (KV-cache decode/prefill).
     past = seq_k - seq_q
     for start_n in range(0, seq_k, BLOCK_N):
         n = start_n + offs_n
@@ -48,6 +73,7 @@ def attention_kernel(
         scores = tl.dot(q_block, k_block) * scale
         if causal:
             scores = tl.where(n[None, :] <= past + offs_m[:, None], scores, -float("inf"))
+        # Rescale previous partial results to the new running max.
         m_next = tl.maximum(m_i, tl.max(scores, axis=1))
         p = tl.exp(scores - m_next[:, None])
         alpha = tl.exp(m_i - m_next)

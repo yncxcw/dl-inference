@@ -1,3 +1,5 @@
+"""Export a single linear layer to DLI and run it with the Triton AOT operators."""
+
 from __future__ import annotations
 
 import argparse
@@ -6,12 +8,26 @@ from pathlib import Path
 
 
 def _repo_root(start: Path) -> Path:
+    """Finds the repository root by walking up from ``start``.
+
+    Args:
+        start: File or directory to start the search from.
+
+    Returns:
+        The first ancestor (or ``start`` itself) containing both ``CMakeLists.txt``
+        and a ``python`` directory.
+
+    Raises:
+        RuntimeError: If no such directory exists.
+    """
     for path in [start, *start.parents]:
         if (path / "CMakeLists.txt").exists() and (path / "python").exists():
             return path
     raise RuntimeError("failed to locate repository root")
 
 
+# Make the built ``dli`` extension and the in-tree Python packages importable when the
+# example is run directly from a checkout.
 ROOT = _repo_root(Path(__file__).resolve())
 sys.path.insert(0, str(ROOT / "build" / "python"))
 sys.path.insert(1, str(ROOT / "python"))
@@ -24,7 +40,10 @@ from dli_export import export_module
 
 
 class LinearExample(nn.Module):
+    """A 4 -> 3 linear layer with fixed, easily checked weights and bias."""
+
     def __init__(self) -> None:
+        """Initializes the layer with hand-picked parameters."""
         super().__init__()
         self.linear = nn.Linear(4, 3)
         with torch.no_grad():
@@ -37,10 +56,23 @@ class LinearExample(nn.Module):
             self.linear.bias.copy_(torch.tensor([0.5, -1.0, 2.0], dtype=torch.float32))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Applies the linear layer.
+
+        Args:
+            x: Input of shape ``[batch, 4]``.
+
+        Returns:
+            Output of shape ``[batch, 3]``.
+        """
         return self.linear(x)
 
 
 def parse_args() -> argparse.Namespace:
+    """Parses command-line arguments.
+
+    Returns:
+        The parsed namespace.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", type=Path, default=ROOT / "build")
     parser.add_argument("--output-dir", type=Path)
@@ -50,6 +82,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Exports the model, then runs it on the GPU unless ``--export-only`` is given.
+
+    Returns:
+        Process exit code (0 on success).
+
+    Raises:
+        RuntimeError: If CUDA is unavailable when execution is requested.
+    """
     args = parse_args()
     output_dir = args.output_dir or args.build_dir / "examples" / "operators" / "linear"
     plugin = args.plugin or args.build_dir / "operators" / "libdli_triton_aot_ops.so"

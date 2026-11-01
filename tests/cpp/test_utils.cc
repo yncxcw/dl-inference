@@ -1,3 +1,8 @@
+/**
+ * @file test_utils.cc
+ * @brief Tests the shape and attribute helpers in dli/utils.h.
+ */
+
 #include <cstdint>
 #include <vector>
 
@@ -5,6 +10,7 @@
 #include "dli/utils.h"
 #include "test_support.h"
 
+// Verifies: product, ceilDiv, formatShape, attribute readers and reshapeShape inference and errors.
 int main() {
   return dli_test::run("utils", [] {
     dli_test::expect(dli::product({2, 3, 4}) == 24, "product full shape");

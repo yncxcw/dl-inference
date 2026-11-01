@@ -1,3 +1,8 @@
+/**
+ * @file test_engine.cc
+ * @brief Tests dli::Engine registry defaults and error handling for missing tensors.
+ */
+
 #include <ATen/ATen.h>
 
 #include <memory>
@@ -10,6 +15,7 @@
 
 namespace {
 
+/// @brief Test operator that copies its single input to its single output.
 class IdentityOp final : public dli::Operator {
  public:
   std::string type() const override { return "identity_test"; }
@@ -24,6 +30,7 @@ class IdentityOp final : public dli::Operator {
 
 }  // namespace
 
+// Verifies: only "aten" is built in, and missing inputs or outputs throw.
 int main() {
   return dli_test::run("Engine", [] {
     dli::Engine engine;

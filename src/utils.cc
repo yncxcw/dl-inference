@@ -1,3 +1,8 @@
+/**
+ * @file utils.cc
+ * @brief Implements the shape, attribute and validation helpers declared in utils.h.
+ */
+
 #include "dli/utils.h"
 
 #include <sstream>
@@ -51,6 +56,7 @@ std::vector<std::int64_t> attrInts(const Attributes& attrs, const std::string& n
 
 void* ptr(const Tensor& tensor) { return const_cast<void*>(tensor.deviceData()); }
 
+// Follows the usual reshape rule: at most one -1, replaced by numel / product(other dims).
 std::vector<std::int64_t> reshapeShape(const std::vector<std::int64_t>& input,
                                        std::vector<std::int64_t> target) {
   std::int64_t known = 1;

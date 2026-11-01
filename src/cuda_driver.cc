@@ -1,3 +1,8 @@
+/**
+ * @file cuda_driver.cc
+ * @brief Implements the dlopen-based CUDA driver API wrapper and AOT cubin kernel launching.
+ */
+
 #include "dli/cuda_driver.h"
 
 #include <dlfcn.h>
@@ -7,6 +12,8 @@
 namespace dli {
 namespace {
 
+// Minimal re-declarations of the CUDA driver API types, so the CUDA toolkit headers are not
+// required at build time. Functions are resolved from libcuda at run time with dlsym.
 using CUresult = int;
 using CUmodule = void*;
 using CUfunction = void*;
@@ -21,6 +28,9 @@ using CuLaunchKernelFn = CUresult (*)(CUfunction, unsigned, unsigned, unsigned, 
                                       unsigned, unsigned, CUstream, void**, void**);
 using CuGetErrorStringFn = CUresult (*)(CUresult, const char**);
 
+/// Process-wide handle to libcuda and the driver entry points this file uses.
+///
+/// If anything fails, `handle` stays null and `load_error` explains why.
 struct Driver {
   void* handle = nullptr;
   CuInitFn init = nullptr;
@@ -68,6 +78,8 @@ struct Driver {
   }
 };
 
+/// Returns the lazily created driver singleton, intentionally leaked so that no dlclose runs
+/// during static destruction.
 Driver& driver() {
   static auto* instance = new Driver;
   return *instance;

@@ -1,3 +1,14 @@
+/**
+ * @file template.cc
+ * @brief Code-generation template for the AOT Triton operator "max_pool2d".
+ *
+ * This is a fragment, not a standalone translation unit: tools/build_triton_aot_ops.py
+ * replaces every double-brace HASH placeholder with the compiled kernel's hash suffix
+ * and splices the fragment into the generated plugin source. It is excluded from
+ * clang-format because of those placeholders.
+ */
+
+/// Operator "max_pool2d": 2-D max pooling with 2x2 or 3x3 windows.
 class MaxPool2dOp final : public dli::Operator {
  public:
   std::string type() const override { return "max_pool2d"; }
@@ -30,6 +41,7 @@ class MaxPool2dOp final : public dli::Operator {
   }
 };
 
+/// Registers the "max_pool2d" operator factory with @p registry.
 void register_max_pool2d(dli::OperatorRegistry* registry) {
   registry->registerFactory("max_pool2d", [] { return std::make_unique<MaxPool2dOp>(); });
 }

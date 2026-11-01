@@ -1,3 +1,8 @@
+/**
+ * @file graph.cc
+ * @brief Implements dli::Graph JSON parsing and serialization with a small built-in JSON parser.
+ */
+
 #include "dli/graph.h"
 
 #include <cctype>
@@ -12,6 +17,8 @@
 namespace dli {
 namespace {
 
+/// Parsed JSON value. Only the member matching `type` is meaningful; integers and floating-point
+/// numbers are kept apart so attributes keep their integer-ness.
 struct JsonValue {
   enum class Type { Null, Bool, Int, Number, String, Array, Object };
   Type type = Type::Null;
@@ -23,6 +30,10 @@ struct JsonValue {
   std::map<std::string, JsonValue> object_value;
 };
 
+/// Recursive-descent parser for the JSON subset used by graph files.
+///
+/// Supports objects, arrays, strings (with the common escapes, but not \u), numbers, booleans
+/// and null. Every error is reported as std::invalid_argument.
 class JsonParser {
  public:
   explicit JsonParser(std::string_view text) : text_(text) {}
@@ -200,6 +211,7 @@ class JsonParser {
   std::size_t pos_ = 0;
 };
 
+/// Returns the member @p name of an object; throws if @p object is not an object or lacks it.
 const JsonValue& requireField(const JsonValue& object, const std::string& name) {
   if (object.type != JsonValue::Type::Object) throw std::invalid_argument("expected JSON object");
   const auto it = object.object_value.find(name);
@@ -207,18 +219,21 @@ const JsonValue& requireField(const JsonValue& object, const std::string& name) 
   return it->second;
 }
 
+/// Returns the member @p name of an object, or nullptr if absent; throws if not an object.
 const JsonValue* optionalField(const JsonValue& object, const std::string& name) {
   if (object.type != JsonValue::Type::Object) throw std::invalid_argument("expected JSON object");
   const auto it = object.object_value.find(name);
   return it == object.object_value.end() ? nullptr : &it->second;
 }
 
+/// Returns the string held by @p value; @p field names it in the error message.
 std::string asString(const JsonValue& value, const std::string& field) {
   if (value.type != JsonValue::Type::String)
     throw std::invalid_argument("JSON field must be string: " + field);
   return value.string_value;
 }
 
+/// Returns the array of strings held by @p value.
 std::vector<std::string> asStringArray(const JsonValue& value, const std::string& field) {
   if (value.type != JsonValue::Type::Array)
     throw std::invalid_argument("JSON field must be string array: " + field);
@@ -227,6 +242,9 @@ std::vector<std::string> asStringArray(const JsonValue& value, const std::string
   return result;
 }
 
+/// Maps a JSON value to an AttributeValue. Arrays must be homogeneous: all strings, all
+/// integers, or all numbers (mixed int/float becomes a double list). An empty array becomes an
+/// empty integer list.
 AttributeValue toAttributeValue(const JsonValue& value) {
   switch (value.type) {
     case JsonValue::Type::Bool:
@@ -272,6 +290,7 @@ AttributeValue toAttributeValue(const JsonValue& value) {
   throw std::invalid_argument("unsupported attribute JSON value");
 }
 
+/// Escapes quote, backslash and newline so @p value can be embedded in a JSON string literal.
 std::string escapeJson(const std::string& value) {
   std::string out;
   for (const char c : value) {
@@ -287,6 +306,7 @@ std::string escapeJson(const std::string& value) {
   return out;
 }
 
+/// Writes @p values as a compact JSON array of strings.
 void appendStringArray(std::ostringstream& out, const std::vector<std::string>& values) {
   out << '[';
   for (std::size_t i = 0; i < values.size(); ++i) {
@@ -296,6 +316,7 @@ void appendStringArray(std::ostringstream& out, const std::vector<std::string>& 
   out << ']';
 }
 
+/// Writes one attribute as compact JSON, dispatching on the variant alternative.
 void appendAttributeValue(std::ostringstream& out, const AttributeValue& value) {
   std::visit(
       [&](const auto& item) {

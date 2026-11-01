@@ -1,9 +1,16 @@
+"""Tiny deterministic Qwen2 model factory used as an end-to-end DLI example."""
+
 from __future__ import annotations
 
 import torch
 
 
-def _import_qwen2_classes():
+def _import_qwen2_classes() -> tuple[type, type]:
+    """Imports the Qwen2 config and causal-LM classes lazily.
+
+    Returns:
+        A ``(Qwen2Config, Qwen2ForCausalLM)`` tuple.
+    """
     # Some CPU-only dev environments have a broken torchvision registration path.
     # Qwen2 is text-only, so mark torchvision unavailable before importing transformers.
     try:
@@ -19,7 +26,12 @@ def _import_qwen2_classes():
     return Qwen2Config, Qwen2ForCausalLM
 
 
-def tiny_config():
+def tiny_config() -> object:
+    """Builds a minimal Qwen2 config (1 layer, hidden size 4, vocab 8).
+
+    Returns:
+        A ``Qwen2Config`` small enough to export and run instantly.
+    """
     Qwen2Config, _ = _import_qwen2_classes()
     return Qwen2Config(
         vocab_size=8,
@@ -37,6 +49,14 @@ def tiny_config():
 
 
 def _init_tiny_qwen2(model: torch.nn.Module) -> torch.nn.Module:
+    """Fills every parameter with a deterministic pattern in [-6/13, 6/13].
+
+    Args:
+        model: The randomly initialized model to overwrite.
+
+    Returns:
+        The same model, switched to eval mode.
+    """
     with torch.no_grad():
         for index, parameter in enumerate(model.parameters()):
             values = torch.arange(parameter.numel(), dtype=torch.float32).reshape_as(parameter)
@@ -44,7 +64,17 @@ def _init_tiny_qwen2(model: torch.nn.Module) -> torch.nn.Module:
     return model.eval()
 
 
-def create_model(model_id: str | None = None, *, local_files_only: bool = False):
+def create_model(model_id: str | None = None, *, local_files_only: bool = False) -> torch.nn.Module:
+    """Creates a Qwen2 causal LM.
+
+    Args:
+        model_id: Hugging Face model id or local path. When omitted, a tiny
+            deterministic model is built instead.
+        local_files_only: If true, never hit the network when loading ``model_id``.
+
+    Returns:
+        The model in eval mode.
+    """
     _, Qwen2ForCausalLM = _import_qwen2_classes()
     if model_id:
         return Qwen2ForCausalLM.from_pretrained(model_id, local_files_only=local_files_only).eval()

@@ -1,3 +1,8 @@
+/**
+ * @file test_graph.cc
+ * @brief Tests dli::Graph JSON parsing, attribute typing and round-tripping.
+ */
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -5,6 +10,7 @@
 #include "dli/graph.h"
 #include "test_support.h"
 
+// Verifies: fields and attribute types parse, toJson() round-trips, and bad documents throw.
 int main() {
   return dli_test::run("Graph", [] {
     const auto graph = dli::Graph::fromJson(R"({

@@ -1,3 +1,8 @@
+/**
+ * @file cuda_runtime.cc
+ * @brief Implements the dlopen-based CUDA runtime wrapper (cudaMalloc, cudaFree, cudaMemcpy).
+ */
+
 #include "dli/cuda_runtime.h"
 
 #include <dlfcn.h>
@@ -8,12 +13,17 @@
 namespace dli {
 namespace {
 
+// Function pointer types of the CUDA runtime entry points resolved with dlsym, avoiding a
+// build-time dependency on the CUDA toolkit.
 using CudaError = int;
 using CudaMallocFn = CudaError (*)(void**, std::size_t);
 using CudaFreeFn = CudaError (*)(void*);
 using CudaMemcpyFn = CudaError (*)(void*, const void*, std::size_t, int);
 using CudaGetErrorStringFn = const char* (*)(CudaError);
 
+/// Process-wide handle to libcudart and the entry points this file uses.
+///
+/// If anything fails, `handle` stays null and `load_error` explains why.
 struct Runtime {
   void* handle = nullptr;
   CudaMallocFn malloc_fn = nullptr;
@@ -53,11 +63,14 @@ struct Runtime {
   }
 };
 
+/// Returns the lazily created runtime singleton, intentionally leaked to avoid dlclose during
+/// static destruction.
 Runtime& runtime() {
   static auto* instance = new Runtime;
   return *instance;
 }
 
+/// Throws std::runtime_error naming @p operation if @p error is not cudaSuccess (0).
 void requireCuda(CudaError error, const char* operation) {
   if (error == 0) return;
   std::ostringstream message;

@@ -1,3 +1,14 @@
+/**
+ * @file template.cc
+ * @brief Code-generation template for the AOT Triton operator "batch_norm2d".
+ *
+ * This is a fragment, not a standalone translation unit: tools/build_triton_aot_ops.py
+ * replaces every double-brace HASH placeholder with the compiled kernel's hash suffix
+ * and splices the fragment into the generated plugin source. It is excluded from
+ * clang-format because of those placeholders.
+ */
+
+/// Operator "batch_norm2d": 2-D batch normalization (inputs: x plus four per-channel parameter tensors).
 class BatchNorm2dOp final : public dli::Operator {
  public:
   std::string type() const override { return "batch_norm2d"; }
@@ -33,6 +44,7 @@ class BatchNorm2dOp final : public dli::Operator {
   }
 };
 
+/// Registers the "batch_norm2d" operator factory with @p registry.
 void register_batch_norm2d(dli::OperatorRegistry* registry) {
   registry->registerFactory("batch_norm2d", [] { return std::make_unique<BatchNorm2dOp>(); });
 }

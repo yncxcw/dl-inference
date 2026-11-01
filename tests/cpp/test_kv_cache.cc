@@ -1,8 +1,14 @@
+/**
+ * @file test_kv_cache.cc
+ * @brief Tests dli::KVCache basic bookkeeping and input validation.
+ */
+
 #include <ATen/ATen.h>
 
 #include "dli/kv_cache.h"
 #include "test_support.h"
 
+// Verifies: empty lookups, CPU tensor rejection and clear().
 int main() {
   return dli_test::run("KVCache", [] {
     dli::KVCache cache;

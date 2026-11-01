@@ -1,3 +1,14 @@
+/**
+ * @file template.cc
+ * @brief Code-generation template for the AOT Triton operator "silu".
+ *
+ * This is a fragment, not a standalone translation unit: tools/build_triton_aot_ops.py
+ * replaces every double-brace HASH placeholder with the compiled kernel's hash suffix
+ * and splices the fragment into the generated plugin source. It is excluded from
+ * clang-format because of those placeholders.
+ */
+
+/// Operator "silu": Element-wise SiLU (swish) activation.
 class SiluOp final : public dli::Operator {
  public:
   std::string type() const override { return "silu"; }
@@ -16,6 +27,7 @@ class SiluOp final : public dli::Operator {
   }
 };
 
+/// Registers the "silu" operator factory with @p registry.
 void register_silu(dli::OperatorRegistry* registry) {
   registry->registerFactory("silu", [] { return std::make_unique<SiluOp>(); });
 }

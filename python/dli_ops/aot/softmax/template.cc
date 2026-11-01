@@ -1,3 +1,14 @@
+/**
+ * @file template.cc
+ * @brief Code-generation template for the AOT Triton operator "softmax".
+ *
+ * This is a fragment, not a standalone translation unit: tools/build_triton_aot_ops.py
+ * replaces every double-brace HASH placeholder with the compiled kernel's hash suffix
+ * and splices the fragment into the generated plugin source. It is excluded from
+ * clang-format because of those placeholders.
+ */
+
+/// Returns the AOT softmax kernel for a power-of-two block width; throws if none exists.
 dli::CudaAotKernel& softmaxKernel(std::int64_t block) {
   switch (block) {
     case 8: return softmax_b8_{{HASH_softmax_b8}}_kernel();
@@ -11,12 +22,14 @@ dli::CudaAotKernel& softmaxKernel(std::int64_t block) {
   throw std::invalid_argument("no AOT softmax specialization for block=" + std::to_string(block));
 }
 
+/// Returns the smallest power of two that is >= @p value (1 for non-positive values).
 std::int64_t nextPowerOf2(std::int64_t value) {
   std::int64_t out = 1;
   while (out < value) out *= 2;
   return out;
 }
 
+/// Operator "softmax": Row-wise softmax over the last dimension.
 class SoftmaxOp final : public dli::Operator {
  public:
   std::string type() const override { return "softmax"; }
@@ -37,6 +50,7 @@ class SoftmaxOp final : public dli::Operator {
   }
 };
 
+/// Registers the "softmax" operator factory with @p registry.
 void register_softmax(dli::OperatorRegistry* registry) {
   registry->registerFactory("softmax", [] { return std::make_unique<SoftmaxOp>(); });
 }

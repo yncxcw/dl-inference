@@ -1,3 +1,5 @@
+"""Numeric test comparing the DLI max pool2d operator with PyTorch."""
+
 from __future__ import annotations
 
 import unittest
@@ -10,7 +12,10 @@ from operator_test_support import CUDA_AVAILABLE, assert_close, run_operator
 
 @unittest.skipUnless(CUDA_AVAILABLE, "CUDA device is not available")
 class MaxPool2dOperatorNumericsTest(unittest.TestCase):
+    """Checks the max pool2d operator against its PyTorch reference."""
+
     def test_max_pool2d(self) -> None:
+        """Verifies the max pool2d operator output matches PyTorch within tolerance."""
         x = torch.tensor(
             [
                 [

@@ -1,6 +1,12 @@
+/**
+ * @file test_cuda_aot_kernel.cc
+ * @brief Tests that CudaAotKernel handles empty launches and unavailable drivers gracefully.
+ */
+
 #include "dli/cuda_driver.h"
 #include "test_support.h"
 
+// Verifies: a zero-grid launch is a no-op and an unavailable driver reports an error string.
 int main() {
   return dli_test::run("CudaAotKernel", [] {
     dli::CudaAotKernel kernel("empty", nullptr, 0, 0);

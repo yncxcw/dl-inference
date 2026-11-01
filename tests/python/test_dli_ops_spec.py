@@ -1,9 +1,12 @@
+"""Tests for ``dli_ops.spec.OperatorSpec``."""
+
 from __future__ import annotations
 
 from dli_ops import OperatorSpec
 
 
 def test_operator_spec_dataclass_defaults() -> None:
+    """Verifies OperatorSpec stores its fields and defaults optional sources to None."""
     spec = OperatorSpec(
         name="linear",
         type_name="linear",

@@ -1,3 +1,5 @@
+"""Triton AOT kernel for a linear (fully connected) layer."""
+
 import triton
 import triton.language as tl
 
@@ -16,6 +18,23 @@ def linear_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
 ):
+    """Computes ``out = x @ weight.T (+ bias)`` with fp32 accumulation.
+
+    Launch grid: ``(cdiv(m, BLOCK_M), cdiv(n, BLOCK_N))``.
+
+    Args:
+        x: Pointer to the contiguous ``[m, k]`` input.
+        weight: Pointer to the contiguous ``[n, k]`` weight (PyTorch layout).
+        bias: Pointer to the ``[n]`` bias; ignored when ``has_bias`` is false.
+        out: Pointer to the contiguous ``[m, n]`` output.
+        m: Number of input rows.
+        n: Number of output features.
+        k: Number of input features (reduction length).
+        has_bias: Whether ``bias`` is added to the result.
+        BLOCK_M: Tile size along ``m``.
+        BLOCK_N: Tile size along ``n``.
+        BLOCK_K: Tile size along the reduction dimension ``k``.
+    """
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -29,6 +48,7 @@ def linear_kernel(
             mask=(offs_m[:, None] < m) & (kk[None, :] < k),
             other=0.0,
         )
+        # Weight is [n, k]; load it transposed as a [BLOCK_K, BLOCK_N] tile for tl.dot.
         b = tl.load(
             weight + offs_n[None, :] * k + kk[:, None],
             mask=(offs_n[None, :] < n) & (kk[:, None] < k),

@@ -1,3 +1,5 @@
+"""Triton AOT kernel for 2-D matrix multiplication."""
+
 import triton
 import triton.language as tl
 
@@ -14,6 +16,21 @@ def matmul_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
 ):
+    """Computes ``out = a @ b`` with fp32 accumulation.
+
+    Launch grid: ``(cdiv(m, BLOCK_M), cdiv(n, BLOCK_N))``.
+
+    Args:
+        a: Pointer to the contiguous ``[m, k]`` left operand.
+        b: Pointer to the contiguous ``[k, n]`` right operand.
+        out: Pointer to the contiguous ``[m, n]`` output.
+        m: Number of rows of ``a``.
+        n: Number of columns of ``b``.
+        k: Reduction length.
+        BLOCK_M: Tile size along ``m``.
+        BLOCK_N: Tile size along ``n``.
+        BLOCK_K: Tile size along the reduction dimension ``k``.
+    """
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)

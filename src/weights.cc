@@ -1,3 +1,8 @@
+/**
+ * @file weights.cc
+ * @brief Implements loadWeights() with a small built-in JSON parser for weight manifests.
+ */
+
 #include "dli/weights.h"
 
 #include <ATen/ATen.h>
@@ -18,6 +23,7 @@
 namespace dli {
 namespace {
 
+/// Maps a DLI element type to the ATen scalar type.
 at::ScalarType torchDType(DType dtype) {
   switch (dtype) {
     case DType::Float32:
@@ -28,6 +34,8 @@ at::ScalarType torchDType(DType dtype) {
   throw std::invalid_argument("unknown dtype");
 }
 
+/// Parsed JSON value. Only the member matching `type` is meaningful. Booleans carry no payload
+/// because manifests never use them.
 struct JsonValue {
   enum class Type { Null, Bool, Int, Number, String, Array, Object };
   Type type = Type::Null;
@@ -38,6 +46,8 @@ struct JsonValue {
   std::map<std::string, JsonValue> object_value;
 };
 
+/// Recursive-descent parser for the JSON subset used by weight manifests (objects, arrays,
+/// strings, non-exponent numbers, true/false/null). Errors are std::invalid_argument.
 class JsonParser {
  public:
   explicit JsonParser(std::string_view text) : text_(text) {}
@@ -180,6 +190,7 @@ class JsonParser {
   std::size_t pos_ = 0;
 };
 
+/// Returns the member @p name of an object; throws if @p object is not an object or lacks it.
 const JsonValue& requireField(const JsonValue& object, const std::string& name) {
   if (object.type != JsonValue::Type::Object) throw std::invalid_argument("expected JSON object");
   const auto it = object.object_value.find(name);
@@ -187,18 +198,21 @@ const JsonValue& requireField(const JsonValue& object, const std::string& name) 
   return it->second;
 }
 
+/// Returns the string held by @p value; @p field names it in the error message.
 std::string asString(const JsonValue& value, const std::string& field) {
   if (value.type != JsonValue::Type::String)
     throw std::invalid_argument("JSON field must be string: " + field);
   return value.string_value;
 }
 
+/// Returns the integer held by @p value.
 std::int64_t asInt(const JsonValue& value, const std::string& field) {
   if (value.type != JsonValue::Type::Int)
     throw std::invalid_argument("JSON field must be integer: " + field);
   return value.int_value;
 }
 
+/// Returns the array of integers held by @p value.
 std::vector<std::int64_t> asIntArray(const JsonValue& value, const std::string& field) {
   if (value.type != JsonValue::Type::Array)
     throw std::invalid_argument("JSON field must be integer array: " + field);
@@ -207,6 +221,7 @@ std::vector<std::int64_t> asIntArray(const JsonValue& value, const std::string& 
   return result;
 }
 
+/// Reads a whole text file; throws std::runtime_error if it cannot be opened.
 std::string readTextFile(const std::filesystem::path& path) {
   std::ifstream file(path);
   if (!file) throw std::runtime_error("failed to open weights manifest: " + path.string());
@@ -215,6 +230,7 @@ std::string readTextFile(const std::filesystem::path& path) {
   return buffer.str();
 }
 
+/// Reads a whole binary file; throws std::runtime_error if it cannot be opened.
 std::vector<std::byte> readBytes(const std::filesystem::path& path) {
   std::ifstream file(path, std::ios::binary);
   if (!file) throw std::runtime_error("failed to open weights data: " + path.string());
@@ -225,6 +241,8 @@ std::vector<std::byte> readBytes(const std::filesystem::path& path) {
   return bytes;
 }
 
+/// Builds a tensor from @p nbytes raw bytes, copying to the GPU when @p device is CUDA.
+/// Throws std::invalid_argument if the byte count does not match dtype and shape.
 Tensor tensorFromBytes(DType dtype, std::vector<std::int64_t> shape, const std::byte* data,
                        std::size_t nbytes, DeviceType device, int device_id) {
   auto host = at::empty(shape, at::TensorOptions().dtype(torchDType(dtype)).device(at::kCPU));
@@ -249,6 +267,8 @@ TensorMap loadWeights(const std::string& manifest_path, DeviceType device, int d
     throw std::invalid_argument("unsupported weights format: " + format);
   auto data_path = std::filesystem::path(asString(requireField(root, "data"), "data"));
   if (data_path.is_relative()) data_path = manifest.parent_path() / data_path;
+  // Relative data paths are resolved against the manifest's directory. The data file is read
+  // once; each tensor then refers to a byte range (offset, nbytes) inside it.
   const auto bytes = readBytes(data_path);
   const auto& tensors = requireField(root, "tensors");
   if (tensors.type != JsonValue::Type::Object)
@@ -262,6 +282,7 @@ TensorMap loadWeights(const std::string& manifest_path, DeviceType device, int d
     const auto shape = asIntArray(requireField(metadata, "shape"), "shape");
     const auto offset = static_cast<std::size_t>(asInt(requireField(metadata, "offset"), "offset"));
     const auto nbytes = static_cast<std::size_t>(asInt(requireField(metadata, "nbytes"), "nbytes"));
+    // Written to avoid overflow in offset + nbytes.
     if (offset > bytes.size() || nbytes > bytes.size() - offset) {
       throw std::invalid_argument("weights tensor range exceeds data file: " + name);
     }

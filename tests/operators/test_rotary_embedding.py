@@ -1,3 +1,5 @@
+"""Numeric test comparing the DLI rotary embedding operator with PyTorch."""
+
 from __future__ import annotations
 
 import unittest
@@ -9,7 +11,10 @@ from operator_test_support import CUDA_AVAILABLE, assert_close, run_operator
 
 @unittest.skipUnless(CUDA_AVAILABLE, "CUDA device is not available")
 class RotaryEmbeddingOperatorNumericsTest(unittest.TestCase):
+    """Checks the rotary embedding operator against its PyTorch reference."""
+
     def test_rotary_embedding(self) -> None:
+        """Verifies the rotary embedding operator output matches PyTorch within tolerance."""
         q = torch.tensor([[[[1.0, 2.0], [-1.0, 0.5]]]])
         k = torch.tensor([[[[0.25, -0.75], [1.5, -2.0]]]])
         cos = torch.tensor([[1.0], [0.5], [-0.25], [0.75]])
@@ -22,6 +27,7 @@ class RotaryEmbeddingOperatorNumericsTest(unittest.TestCase):
         )
 
         def rotate(x: torch.Tensor) -> torch.Tensor:
+            """Applies the reference rotary embedding to one tensor."""
             out = x.clone()
             c = cos[1:3, 0].reshape(1, 1, 2)
             s = sin[1:3, 0].reshape(1, 1, 2)
