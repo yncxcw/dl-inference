@@ -1,3 +1,8 @@
+/**
+ * @file test_operator_registry.cc
+ * @brief Tests dli::OperatorRegistry registration, creation and plugin loading.
+ */
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -7,6 +12,7 @@
 
 namespace {
 
+/// @brief Test operator that copies its single input to its single output.
 class IdentityOp final : public dli::Operator {
  public:
   std::string type() const override { return "identity_test"; }
@@ -19,6 +25,13 @@ class IdentityOp final : public dli::Operator {
   }
 };
 
+/**
+ * @brief Parses the test's command line.
+ * @param argc Argument count from main().
+ * @param argv Argument vector from main().
+ * @return Value of `--plugin`, or an empty string if it was not given.
+ * @throws std::invalid_argument On an unknown or incomplete argument.
+ */
 std::string parsePluginPath(int argc, char** argv) {
   std::string plugin_path;
   for (int i = 1; i < argc; ++i) {
@@ -34,6 +47,8 @@ std::string parsePluginPath(int argc, char** argv) {
 
 }  // namespace
 
+// Verifies: registration and lookup, error cases, and (with --plugin) plugin registration of all
+// Triton operators.
 int main(int argc, char** argv) {
   return dli_test::run("OperatorRegistry", [&] {
     const auto plugin_path = parsePluginPath(argc, argv);

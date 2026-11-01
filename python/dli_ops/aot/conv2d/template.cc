@@ -1,3 +1,14 @@
+/**
+ * @file template.cc
+ * @brief Code-generation template for the AOT Triton operator "conv2d".
+ *
+ * This is a fragment, not a standalone translation unit: tools/build_triton_aot_ops.py
+ * replaces every double-brace HASH placeholder with the compiled kernel's hash suffix
+ * and splices the fragment into the generated plugin source. It is excluded from
+ * clang-format because of those placeholders.
+ */
+
+/// Operator "conv2d": 2-D convolution with optional bias, limited to the specialized channel and kernel sizes.
 class Conv2dOp final : public dli::Operator {
  public:
   std::string type() const override { return "conv2d"; }
@@ -37,6 +48,7 @@ class Conv2dOp final : public dli::Operator {
   }
 };
 
+/// Registers the "conv2d" operator factory with @p registry.
 void register_conv2d(dli::OperatorRegistry* registry) {
   registry->registerFactory("conv2d", [] { return std::make_unique<Conv2dOp>(); });
 }

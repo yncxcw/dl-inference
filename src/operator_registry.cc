@@ -1,3 +1,8 @@
+/**
+ * @file operator_registry.cc
+ * @brief Implements dli::OperatorRegistry, including loading operator plugin libraries.
+ */
+
 #include <dlfcn.h>
 
 #include <stdexcept>
@@ -32,6 +37,8 @@ void OperatorRegistry::loadLibrary(const std::string& path) {
     dlclose(handle);
     throw std::runtime_error("operator library is missing dli_register_operators: " + path);
   }
+  // Plugins export a C-linkage `dli_register_operators` that fills this registry. The handle is
+  // kept open on success because the registered factories live in the library's code.
   auto* fn = reinterpret_cast<RegisterOperatorsFn>(symbol);
   if (!fn(this)) {
     dlclose(handle);

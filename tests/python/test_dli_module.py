@@ -1,3 +1,5 @@
+"""Tests for the ``dli`` Python bindings."""
+
 from __future__ import annotations
 
 import json
@@ -8,6 +10,7 @@ import dli
 
 
 def test_python_engine_runs_aten_graph() -> None:
+    """Verifies the Python engine executes an aten add graph correctly."""
     graph = dli.Graph.from_json(
         json.dumps(
             {
@@ -42,6 +45,7 @@ def test_python_engine_runs_aten_graph() -> None:
 
 
 def test_python_graph_round_trip() -> None:
+    """Verifies a graph survives a JSON parse and serialize round trip."""
     graph = dli.Graph.from_json(
         json.dumps(
             {

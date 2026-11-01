@@ -1,3 +1,5 @@
+"""Shared helpers for operator numeric tests that run the DLI engine runner."""
+
 from __future__ import annotations
 
 import json
@@ -14,6 +16,14 @@ CUDA_AVAILABLE = torch.cuda.is_available()
 
 
 def _runner() -> Path:
+    """Locates the operator test runner binary.
+
+    Returns:
+        Path to the executable named by ``DLI_OP_TEST_RUNNER``.
+
+    Raises:
+        unittest.SkipTest: If the variable is unset or the path is missing.
+    """
     value = os.environ.get("DLI_OP_TEST_RUNNER")
     if not value:
         raise unittest.SkipTest("DLI_OP_TEST_RUNNER is not set")
@@ -24,6 +34,14 @@ def _runner() -> Path:
 
 
 def _plugin() -> Path:
+    """Locates the AOT plugin shared library.
+
+    Returns:
+        Path to the library named by ``DLI_AOT_PLUGIN``.
+
+    Raises:
+        unittest.SkipTest: If the variable is unset or the path is missing.
+    """
     value = os.environ.get("DLI_AOT_PLUGIN")
     if not value:
         raise unittest.SkipTest("DLI_AOT_PLUGIN is not set")
@@ -34,6 +52,17 @@ def _plugin() -> Path:
 
 
 def _dtype_name(tensor: torch.Tensor) -> str:
+    """Returns the DLI manifest dtype name for a tensor.
+
+    Args:
+        tensor: Tensor whose dtype is inspected.
+
+    Returns:
+        ``"float32"`` or ``"int64"``.
+
+    Raises:
+        TypeError: If the dtype is not supported.
+    """
     if tensor.dtype == torch.float32:
         return "float32"
     if tensor.dtype == torch.int64:
@@ -42,6 +71,15 @@ def _dtype_name(tensor: torch.Tensor) -> str:
 
 
 def _write_weights(path: Path, tensors: dict[str, torch.Tensor]) -> Path:
+    """Writes tensors as a DLI weights file (binary payload plus JSON manifest).
+
+    Args:
+        path: Directory that receives ``inputs.bin`` and ``inputs.json``.
+        tensors: Tensors to serialize, keyed by name.
+
+    Returns:
+        Path to the written manifest.
+    """
     data_path = path / "inputs.bin"
     manifest_path = path / "inputs.json"
     offset = 0
@@ -73,6 +111,18 @@ def _write_graph(
     outputs: list[str],
     attrs: dict[str, object] | None = None,
 ) -> Path:
+    """Writes a single-node DLI graph JSON file.
+
+    Args:
+        path: Directory that receives ``graph.json``.
+        op_type: Operator type used for the node's name and op.
+        inputs: Graph and node input tensor names.
+        outputs: Graph and node output tensor names.
+        attrs: Optional operator attributes.
+
+    Returns:
+        Path to the written graph file.
+    """
     graph_path = path / "graph.json"
     graph = {
         "format": "dli.graph.v1",
@@ -94,6 +144,14 @@ def _write_graph(
 
 
 def _read_outputs(path: Path) -> dict[str, torch.Tensor]:
+    """Reads output tensors written by the operator runner.
+
+    Args:
+        path: Output directory containing ``outputs.json`` and tensor files.
+
+    Returns:
+        Output tensors keyed by name.
+    """
     manifest = json.loads((path / "outputs.json").read_text(encoding="utf-8"))
     outputs = {}
     for name, metadata in manifest["tensors"].items():
@@ -111,6 +169,21 @@ def run_operator(
     outputs: list[str] | None = None,
     attrs: dict[str, object] | None = None,
 ) -> dict[str, torch.Tensor]:
+    """Runs one operator through the DLI engine runner.
+
+    Args:
+        op_type: Operator type to execute.
+        inputs: Input tensors keyed by name.
+        outputs: Output tensor names; defaults to ``["output"]``.
+        attrs: Optional operator attributes.
+
+    Returns:
+        Output tensors keyed by name.
+
+    Raises:
+        unittest.SkipTest: If the runner or plugin is not configured.
+        subprocess.CalledProcessError: If the runner exits with an error.
+    """
     outputs = outputs or ["output"]
     with tempfile.TemporaryDirectory(prefix=f"dli_{op_type}_") as temp:
         root = Path(temp)
@@ -138,5 +211,12 @@ def run_operator(
 
 
 def assert_close(test: unittest.TestCase, actual: torch.Tensor, expected: torch.Tensor) -> None:
+    """Asserts two tensors have equal shape and close values.
+
+    Args:
+        test: Test case used for the shape assertion.
+        actual: Tensor produced by the operator under test.
+        expected: Reference tensor, moved to CPU before comparison.
+    """
     test.assertEqual(list(actual.shape), list(expected.shape))
     torch.testing.assert_close(actual, expected.cpu(), rtol=1e-3, atol=1e-3)

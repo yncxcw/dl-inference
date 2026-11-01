@@ -1,3 +1,8 @@
+/**
+ * @file tensor.cc
+ * @brief Implements dli::Tensor and the dtype and device helpers on top of ATen.
+ */
+
 #include "dli/tensor.h"
 
 #include <ATen/ATen.h>
@@ -9,6 +14,7 @@
 namespace dli {
 namespace {
 
+/// Maps a DLI element type to the ATen scalar type.
 at::ScalarType torchDType(DType dtype) {
   switch (dtype) {
     case DType::Float32:
@@ -19,28 +25,33 @@ at::ScalarType torchDType(DType dtype) {
   throw std::invalid_argument("unknown dtype");
 }
 
+/// Maps an ATen scalar type to a DLI element type; throws if it is unsupported.
 DType dtypeFromTorch(at::ScalarType dtype) {
   if (dtype == at::kFloat) return DType::Float32;
   if (dtype == at::kLong) return DType::Int64;
   throw std::invalid_argument("unsupported torch tensor dtype");
 }
 
+/// Returns the DLI device type of an ATen tensor; throws if it is neither CPU nor CUDA.
 DeviceType deviceFromTorch(const at::Tensor& tensor) {
   if (tensor.device().is_cpu()) return DeviceType::Cpu;
   if (tensor.device().is_cuda()) return DeviceType::Cuda;
   throw std::invalid_argument("unsupported torch tensor device");
 }
 
+/// Copies the sizes of an ATen tensor into a vector.
 std::vector<std::int64_t> shapeFromTorch(const at::Tensor& tensor) {
   return {tensor.sizes().begin(), tensor.sizes().end()};
 }
 
+/// Builds ATen tensor options for the given element type and device.
 at::TensorOptions optionsFor(DType dtype, DeviceType device, int device_id = 0) {
   auto options = at::TensorOptions().dtype(torchDType(dtype));
   if (device == DeviceType::Cpu) return options.device(at::kCPU);
   return options.device(at::Device(at::kCUDA, device_id));
 }
 
+/// Throws std::logic_error unless @p tensor is a CPU tensor of element type @p dtype.
 void checkHostData(const Tensor& tensor, DType dtype) {
   if (!tensor.isCpu()) throw std::logic_error("host data access requested for non-CPU tensor");
   if (tensor.dtype() != dtype)
@@ -49,11 +60,13 @@ void checkHostData(const Tensor& tensor, DType dtype) {
 
 }  // namespace
 
+// Keeps ATen out of the public header's data layout: the header only forward-declares Impl.
 struct Tensor::Impl {
   explicit Impl(at::Tensor value) : tensor(std::move(value)) {}
   at::Tensor tensor;
 };
 
+// Caches metadata from the ATen tensor. A zero-dimensional tensor is exposed as shape {1}.
 Tensor::Tensor(std::shared_ptr<Impl> impl) : impl_(std::move(impl)) {
   const auto& tensor = this->impl().tensor;
   dtype_ = dtypeFromTorch(tensor.scalar_type());
@@ -138,6 +151,8 @@ Tensor Tensor::cuda(DType dtype, std::vector<std::int64_t> shape, int device_id)
       std::make_shared<Impl>(at::empty(shape, optionsFor(dtype, DeviceType::Cuda, device_id))));
 }
 
+// External tensors have no Impl: they only carry the raw pointer and metadata, so the ATen
+// based accessors are unavailable for them.
 Tensor Tensor::externalCuda(DType dtype, std::vector<std::int64_t> shape, void* data,
                             int device_id) {
   if (data == nullptr) throw std::invalid_argument("external CUDA tensor pointer is null");
@@ -156,6 +171,7 @@ std::int64_t Tensor::dim(std::size_t index) const {
   return shape_[index];
 }
 
+// External tensors compute the count from shape_ with overflow checking; ATen tensors ask ATen.
 std::size_t Tensor::numel() const {
   if (!impl_) {
     std::size_t result = 1;
@@ -205,6 +221,7 @@ at::Tensor& Tensor::torchTensor() { return impl().tensor; }
 
 const at::Tensor& Tensor::torchTensor() const { return impl().tensor; }
 
+// Explicit specializations of the host data accessors for the supported element types.
 template <>
 float* Tensor::data<float>() {
   checkHostData(*this, DType::Float32);

@@ -1,3 +1,14 @@
+/**
+ * @file template.cc
+ * @brief Code-generation template for the AOT Triton operator "linear".
+ *
+ * This is a fragment, not a standalone translation unit: tools/build_triton_aot_ops.py
+ * replaces every double-brace HASH placeholder with the compiled kernel's hash suffix
+ * and splices the fragment into the generated plugin source. It is excluded from
+ * clang-format because of those placeholders.
+ */
+
+/// Returns the AOT linear kernel specialized for reduction size @p k and bias presence.
 dli::CudaAotKernel& linearKernel(std::int64_t k, bool has_bias) {
   switch (k) {
     case 2: return has_bias ? linear_k2_b1_{{HASH_linear_k2_b1}}_kernel() : linear_k2_b0_{{HASH_linear_k2_b0}}_kernel();
@@ -11,6 +22,7 @@ dli::CudaAotKernel& linearKernel(std::int64_t k, bool has_bias) {
   throw std::invalid_argument("no AOT linear specialization for k=" + std::to_string(k));
 }
 
+/// Operator "linear": Fully connected layer with optional bias, specialized per reduction size.
 class LinearOp final : public dli::Operator {
  public:
   std::string type() const override { return "linear"; }
@@ -34,6 +46,7 @@ class LinearOp final : public dli::Operator {
   }
 };
 
+/// Registers the "linear" operator factory with @p registry.
 void register_linear(dli::OperatorRegistry* registry) {
   registry->registerFactory("linear", [] { return std::make_unique<LinearOp>(); });
 }

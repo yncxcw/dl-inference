@@ -1,3 +1,14 @@
+/**
+ * @file template.cc
+ * @brief Code-generation template for the AOT Triton operator "embedding".
+ *
+ * This is a fragment, not a standalone translation unit: tools/build_triton_aot_ops.py
+ * replaces every double-brace HASH placeholder with the compiled kernel's hash suffix
+ * and splices the fragment into the generated plugin source. It is excluded from
+ * clang-format because of those placeholders.
+ */
+
+/// Returns the AOT embedding kernel specialized for the given hidden size; throws if none exists.
 dli::CudaAotKernel& embeddingKernel(std::int64_t hidden) {
   switch (hidden) {
     case 2: return embedding_h2_{{HASH_embedding_h2}}_kernel();
@@ -9,6 +20,7 @@ dli::CudaAotKernel& embeddingKernel(std::int64_t hidden) {
   throw std::invalid_argument("no AOT embedding specialization for hidden=" + std::to_string(hidden));
 }
 
+/// Operator "embedding": Embedding table lookup, specialized per hidden size.
 class EmbeddingOp final : public dli::Operator {
  public:
   std::string type() const override { return "embedding"; }
@@ -31,6 +43,7 @@ class EmbeddingOp final : public dli::Operator {
   }
 };
 
+/// Registers the "embedding" operator factory with @p registry.
 void register_embedding(dli::OperatorRegistry* registry) {
   registry->registerFactory("embedding", [] { return std::make_unique<EmbeddingOp>(); });
 }

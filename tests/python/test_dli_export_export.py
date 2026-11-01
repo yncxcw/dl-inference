@@ -1,3 +1,5 @@
+"""Tests for ``dli_export.export``."""
+
 from __future__ import annotations
 
 import json
@@ -13,24 +15,33 @@ from qwen2 import create_model as create_qwen2
 
 
 class LinearModel(torch.nn.Module):
+    """Single linear layer used as an export fixture."""
+
     def __init__(self) -> None:
+        """Builds the linear layer."""
         super().__init__()
         self.linear = torch.nn.Linear(4, 3)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Applies the linear layer."""
         return self.linear(x)
 
 
 class BatchNorm2dModel(torch.nn.Module):
+    """Single BatchNorm2d layer used as an export fixture."""
+
     def __init__(self) -> None:
+        """Builds the batch norm layer."""
         super().__init__()
         self.norm = torch.nn.BatchNorm2d(3, eps=1e-4)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Applies batch normalization."""
         return self.norm(x)
 
 
 def test_private_parsers() -> None:
+    """Verifies the CLI shape, kwargs and factory parsers."""
     assert export_impl._parse_shape("1,3,32,32") == (1, 3, 32, 32)
     assert export_impl._parse_model_kwargs(["local_files_only=true", "hidden=4", "name=qwen2"]) == {
         "local_files_only": True,
@@ -41,6 +52,7 @@ def test_private_parsers() -> None:
 
 
 def test_export_linear_fx_graph() -> None:
+    """Verifies exporting a linear model yields a linear node and weight shapes."""
     model = LinearModel().eval()
     with tempfile.TemporaryDirectory() as tmp:
         graph_path, weights_path = export_module(
@@ -57,6 +69,7 @@ def test_export_linear_fx_graph() -> None:
 
 
 def test_export_batch_norm2d_fx_graph() -> None:
+    """Verifies exporting BatchNorm2d yields a batch_norm2d node with its buffers."""
     model = BatchNorm2dModel().eval()
     with tempfile.TemporaryDirectory() as tmp:
         graph_path, weights_path = export_module(
@@ -83,6 +96,7 @@ def test_export_batch_norm2d_fx_graph() -> None:
 
 
 def test_export_alexnet_fx_graph() -> None:
+    """Verifies the exported AlexNet op sequence and weight shapes."""
     with tempfile.TemporaryDirectory() as tmp:
         graph_path, weights_path = export_module(
             create_alexnet(),
@@ -112,6 +126,7 @@ def test_export_alexnet_fx_graph() -> None:
 
 
 def test_export_qwen2_graph() -> None:
+    """Verifies the exported Qwen2 op sequence, IO names and weight shapes."""
     with tempfile.TemporaryDirectory() as tmp:
         graph_path, weights_path = export_module(
             create_qwen2(), (), tmp, model_type="qwen2", stem="qwen2"

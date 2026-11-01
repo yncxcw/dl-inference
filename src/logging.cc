@@ -1,3 +1,8 @@
+/**
+ * @file logging.cc
+ * @brief Implements the logging level, sink management and record emission.
+ */
+
 #include "dli/logging.h"
 
 #include <iostream>
@@ -7,6 +12,7 @@
 namespace dli {
 namespace {
 
+/// Mutex guarding the sink and the level; function-local statics avoid init-order problems.
 std::mutex& sinkMutex() {
   static std::mutex mutex;
   return mutex;
@@ -17,11 +23,13 @@ LogSink& sinkStorage() {
   return sink;
 }
 
+/// Storage for the threshold, which defaults to Warn.
 LogSeverity& logLevelStorage() {
   static LogSeverity level = LogSeverity::Warn;
   return level;
 }
 
+/// Maps a severity to an integer so severities can be compared.
 int severityRank(LogSeverity severity) {
   switch (severity) {
     case LogSeverity::Debug:
@@ -36,6 +44,7 @@ int severityRank(LogSeverity severity) {
   return 0;
 }
 
+/// Sink used when none is installed: writes `[SEVERITY] file:line message` to stderr.
 void defaultSink(LogSeverity severity, std::string_view file, int line, std::string_view message) {
   std::cerr << "[" << toString(severity) << "] " << file << ":" << line << " " << message << "\n";
 }
@@ -76,6 +85,8 @@ void resetLogSink() { setLogSink({}); }
 LogMessage::LogMessage(LogSeverity severity, const char* file, int line)
     : severity_(severity), file_(file), line_(line) {}
 
+// The destructor must not throw (it runs at the end of a full expression), so every failure,
+// including one raised by a user sink, is swallowed.
 LogMessage::~LogMessage() noexcept {
   try {
     const auto message = stream_.str();

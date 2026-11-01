@@ -1,3 +1,5 @@
+"""Tests for ``dli_export.weights``."""
+
 from __future__ import annotations
 
 import json
@@ -10,6 +12,7 @@ from dli_export.weights import WeightWriter, dtype_name
 
 
 def test_dtype_name() -> None:
+    """Verifies dtype names for supported dtypes and rejection of others."""
     assert dtype_name(torch.zeros(1, dtype=torch.float32)) == "float32"
     assert dtype_name(torch.zeros(1, dtype=torch.int64)) == "int64"
     try:
@@ -21,6 +24,7 @@ def test_dtype_name() -> None:
 
 
 def test_weight_writer_manifest_and_payload() -> None:
+    """Verifies WeightWriter emits the expected manifest, offsets and payload size."""
     with tempfile.TemporaryDirectory() as tmp:
         writer = WeightWriter(tmp, "weights")
         assert writer.manifest_name == "weights.dli.weights.json"

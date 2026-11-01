@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""Builds the Triton AOT operator plugin library for the DLI runtime.
+
+Compiles each Triton kernel specialization listed in ``default_specs`` to a
+CUBIN, embeds the CUBINs in a generated C++ source together with the per-operator
+``template.cc`` files, and compiles that source into a shared library that
+registers the operators with the C++ runtime.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -10,6 +18,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 
 import triton
 from triton.backends.compiler import GPUTarget
@@ -37,6 +46,20 @@ OPERATOR_NAMES = (
 
 @dataclass(frozen=True)
 class AotSpec:
+    """One Triton kernel specialization to compile ahead of time.
+
+    Attributes:
+        id: Unique specialization id; also the prefix of the emitted C++ symbol
+            and the key of the ``{{HASH_<id>}}`` template placeholder.
+        module: Operator directory name under the kernel source root.
+        kernel_name: Name of the ``@triton.jit`` function in the module.
+        signature: One entry per kernel argument: ``"*fp32"``-style pointer or
+            scalar types (optionally ``"type:divisibility"``), or a literal
+            value that is bound as a ``constexpr``.
+        num_warps: Triton ``num_warps`` compile option.
+        num_stages: Triton ``num_stages`` compile option.
+    """
+
     id: str
     module: str
     kernel_name: str
@@ -47,13 +70,31 @@ class AotSpec:
 
 @dataclass(frozen=True)
 class CompiledSpec:
+    """A compiled kernel specialization.
+
+    Attributes:
+        spec: The specialization that was compiled.
+        symbol: Unique C++ symbol stem, ``<spec.id>_<signature hash>``.
+        cubin: Compiled CUBIN image.
+        shared: Static shared memory used by the kernel, in bytes.
+    """
+
     spec: AotSpec
     symbol: str
     cubin: bytes
     shared: int
 
 
-def constexpr(value: str):
+def constexpr(value: str) -> int | float | None:
+    """Parses a signature entry as a numeric constexpr value.
+
+    Args:
+        value: Signature entry such as ``"128"``, ``"0.5"`` or ``"*fp32"``.
+
+    Returns:
+        An ``int`` or ``float`` if the entry is a literal, else ``None`` (the
+        entry is a runtime argument type).
+    """
     try:
         return int(value)
     except ValueError:
@@ -66,11 +107,34 @@ def constexpr(value: str):
 
 
 def hash_signature(signature: tuple[str, ...], num_warps: int, num_stages: int) -> str:
+    """Returns a short stable hash identifying a kernel specialization.
+
+    Args:
+        signature: Kernel signature entries.
+        num_warps: Triton ``num_warps`` option.
+        num_stages: Triton ``num_stages`` option.
+
+    Returns:
+        First 8 hex digits of the SHA-256 of the textual specialization.
+    """
     text = " ".join(signature) + f" warps{num_warps} stages{num_stages}"
     return hashlib.sha256(text.encode()).hexdigest()[:8]
 
 
-def load_kernel_module(operator_dir: Path):
+def load_kernel_module(operator_dir: Path) -> ModuleType:
+    """Imports ``kernel.py`` from an operator directory.
+
+    The directory is put on ``sys.path`` so kernels can import sibling modules.
+
+    Args:
+        operator_dir: Directory containing ``kernel.py``.
+
+    Returns:
+        The loaded kernel module.
+
+    Raises:
+        FileNotFoundError: If ``kernel.py`` does not exist.
+    """
     path = operator_dir / "kernel.py"
     if not path.exists():
         raise FileNotFoundError(f"missing Triton kernel module: {path}")
@@ -82,13 +146,29 @@ def load_kernel_module(operator_dir: Path):
     return module
 
 
-def compile_spec(modules: dict[str, object], spec: AotSpec, arch: int) -> CompiledSpec:
+def compile_spec(modules: dict[str, ModuleType], spec: AotSpec, arch: int) -> CompiledSpec:
+    """Compiles one specialization to a CUBIN with Triton.
+
+    Args:
+        modules: Loaded kernel modules keyed by operator name.
+        spec: Specialization to compile.
+        arch: Target compute capability as an integer, e.g. 80 for sm_80.
+
+    Returns:
+        The compiled specialization.
+
+    Raises:
+        RuntimeError: If the kernel needs global or profile scratch memory.
+    """
     kernel = getattr(modules[spec.module], spec.kernel_name)
+    # Signature entries are either "type[:divisibility]" for runtime arguments
+    # or bare literals that are specialized as constexprs.
     signature_items = list(spec.signature)
     hints = {(i,): constexpr(s.split(":")[1]) for i, s in enumerate(signature_items) if ":" in s}
     hints = {k: v for k, v in hints.items() if v is not None}
     constants = {kernel.arg_names[i]: constexpr(s) for i, s in enumerate(signature_items)}
     constants = {k: v for k, v in constants.items() if v is not None}
+    # Triton specializes integer arguments equal to 1 as constants.
     for key, value in hints.items():
         if value == 1:
             constants[kernel.arg_names[key[0]]] = value
@@ -119,6 +199,14 @@ def compile_spec(modules: dict[str, object], spec: AotSpec, arch: int) -> Compil
 
 
 def default_specs() -> list[AotSpec]:
+    """Returns every kernel specialization built into the plugin.
+
+    Specializations are enumerated over the shapes (hidden sizes, head dims,
+    kernel sizes, ...) the runtime templates dispatch on.
+
+    Returns:
+        The ordered list of specializations.
+    """
     specs: list[AotSpec] = []
     specs.append(
         AotSpec(
@@ -331,6 +419,7 @@ def default_specs() -> list[AotSpec]:
 
 
 def c_array(data: bytes) -> str:
+    """Formats bytes as the body of a C array initializer (``0x00, 0x01, ...``)."""
     hexed = binascii.hexlify(data).decode()
     return ", ".join(f"0x{hexed[i:i + 2]}" for i in range(0, len(hexed), 2))
 
@@ -338,9 +427,26 @@ def c_array(data: bytes) -> str:
 def emit_plugin(
     compiled: list[CompiledSpec], kernel_root: Path, operator_names: tuple[str, ...]
 ) -> str:
+    """Generates the C++ plugin source embedding all kernels and operator templates.
+
+    Args:
+        compiled: Compiled kernel specializations to embed.
+        kernel_root: Directory holding one subdirectory per operator, each with
+            a ``template.cc``.
+        operator_names: Operators whose templates are included and registered.
+
+    Returns:
+        Complete C++ source text.
+
+    Raises:
+        FileNotFoundError: If an operator template is missing.
+        RuntimeError: If a template references an unknown kernel hash placeholder.
+    """
     arrays = []
     replacements = {}
     for item in compiled:
+        # Templates refer to kernels via {{HASH_<id>}} so they need not know
+        # the signature-dependent hash suffix.
         suffix = item.symbol[len(item.spec.id) + 1 :]
         replacements[f"{{{{HASH_{item.spec.id}}}}}"] = suffix
         arrays.append(
@@ -417,6 +523,18 @@ def compile_shared(
     core_library_dir: Path,
     extra_include_dirs: list[Path],
 ) -> None:
+    """Compiles the generated C++ source into a shared library.
+
+    Args:
+        source: Generated C++ source file.
+        output: Path of the shared library to produce.
+        include_dir: Directory with the DLI public headers.
+        core_library_dir: Directory containing ``libdli_core``.
+        extra_include_dirs: Additional include directories (e.g. CUDA headers).
+
+    Raises:
+        subprocess.CalledProcessError: If the compiler fails.
+    """
     cxx = os.environ.get("CXX", "c++")
     cmd = [
         cxx,
@@ -428,6 +546,7 @@ def compile_shared(
         str(source),
         f"-L{core_library_dir}",
         "-ldli_core",
+        # The plugin is installed one level below libdli_core.
         "-Wl,-rpath,$ORIGIN/..",
         "-o",
         str(output),
@@ -436,6 +555,17 @@ def compile_shared(
 
 
 def detect_arch(explicit_arch: int | None) -> int:
+    """Chooses the target compute capability.
+
+    Precedence: explicit argument, ``DLI_AOT_ARCH`` environment variable, the
+    first visible CUDA device, then a default of 80.
+
+    Args:
+        explicit_arch: Value from ``--arch``, if given.
+
+    Returns:
+        Compute capability as an integer, e.g. 80 for sm_80.
+    """
     if explicit_arch is not None:
         return explicit_arch
     if "DLI_AOT_ARCH" in os.environ:
@@ -447,11 +577,17 @@ def detect_arch(explicit_arch: int | None) -> int:
             major, minor = torch.cuda.get_device_capability(0)
             return major * 10 + minor
     except Exception:
+        # Torch missing or CUDA unusable (e.g. building on a GPU-less host).
         pass
     return 80
 
 
 def main() -> int:
+    """Command-line entry point.
+
+    Returns:
+        Process exit code (0 on success).
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--core-library-dir", type=Path)

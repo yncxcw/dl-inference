@@ -1,3 +1,8 @@
+/**
+ * @file kv_cache.cc
+ * @brief Implements dli::KVCache, which concatenates keys and values along the sequence axis.
+ */
+
 #include "dli/kv_cache.h"
 
 #include <stdexcept>
@@ -22,6 +27,8 @@ void KVCache::append(const std::string& name, const Tensor& key, const Tensor& v
     return;
   }
 
+  // Existing entry: grow it along the sequence axis (dim 2) by allocating a larger tensor and
+  // copying old data followed by the new data. Other dimensions must match.
   const auto& old_key = it->second.key;
   const auto& old_value = it->second.value;
   if (old_key.dim(0) != key.dim(0) || old_key.dim(1) != key.dim(1) ||

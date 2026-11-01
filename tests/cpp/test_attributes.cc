@@ -1,3 +1,8 @@
+/**
+ * @file test_attributes.cc
+ * @brief Tests dli::Attributes storage, typed lookup, fallback and error behavior.
+ */
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -5,6 +10,7 @@
 #include "dli/attributes.h"
 #include "test_support.h"
 
+// Verifies: every variant type round-trips; wrong-type and missing lookups throw.
 int main() {
   return dli_test::run("Attributes", [] {
     dli::Attributes attrs;

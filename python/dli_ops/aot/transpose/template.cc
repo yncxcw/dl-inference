@@ -1,3 +1,14 @@
+/**
+ * @file template.cc
+ * @brief Code-generation template for the AOT Triton operator "transpose".
+ *
+ * This is a fragment, not a standalone translation unit: tools/build_triton_aot_ops.py
+ * replaces every double-brace HASH placeholder with the compiled kernel's hash suffix
+ * and splices the fragment into the generated plugin source. It is excluded from
+ * clang-format because of those placeholders.
+ */
+
+/// Operator "transpose": 2-D transpose selected by the "perm" attribute.
 class TransposeOp final : public dli::Operator {
  public:
   std::string type() const override { return "transpose"; }
@@ -20,6 +31,7 @@ class TransposeOp final : public dli::Operator {
   }
 };
 
+/// Registers the "transpose" operator factory with @p registry.
 void register_transpose(dli::OperatorRegistry* registry) {
   registry->registerFactory("transpose", [] { return std::make_unique<TransposeOp>(); });
 }

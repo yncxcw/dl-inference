@@ -1,3 +1,8 @@
+/**
+ * @file test_weights.cc
+ * @brief Tests dli::loadWeights against a manifest written to a temporary directory.
+ */
+
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -6,6 +11,7 @@
 #include "dli/weights.h"
 #include "test_support.h"
 
+// Verifies: float32 and int64 tensors load correctly and a bad format throws.
 int main() {
   return dli_test::run("weights", [] {
     const auto bin_path = dli_test::tempPath("dli_test_weights", ".bin");

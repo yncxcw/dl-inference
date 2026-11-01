@@ -1,3 +1,5 @@
+"""Numeric test comparing the DLI embedding operator with PyTorch."""
+
 from __future__ import annotations
 
 import unittest
@@ -9,7 +11,10 @@ from operator_test_support import CUDA_AVAILABLE, assert_close, run_operator
 
 @unittest.skipUnless(CUDA_AVAILABLE, "CUDA device is not available")
 class EmbeddingOperatorNumericsTest(unittest.TestCase):
+    """Checks the embedding operator against its PyTorch reference."""
+
     def test_embedding(self) -> None:
+        """Verifies the embedding operator output matches PyTorch within tolerance."""
         ids = torch.tensor([[2, 1], [0, 3]], dtype=torch.int64)
         table = torch.arange(20, dtype=torch.float32).reshape(5, 4) / 10.0
         assert_close(

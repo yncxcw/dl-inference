@@ -1,3 +1,9 @@
+/**
+ * @file operator_engine_runner.cc
+ * @brief Command-line tool that runs a graph with a plugin library on CUDA and dumps the outputs to
+ * files.
+ */
+
 #include <cstddef>
 #include <cstring>
 #include <filesystem>
@@ -15,6 +21,7 @@
 
 namespace {
 
+/// @brief Parsed command-line arguments of the runner.
 struct Args {
   std::string graph;
   std::string inputs;
@@ -22,6 +29,13 @@ struct Args {
   std::string output_dir;
 };
 
+/**
+ * @brief Parses and validates the command line.
+ * @param argc Argument count from main().
+ * @param argv Argument vector from main().
+ * @return The four required paths: --graph, --inputs, --plugin and --output-dir.
+ * @throws std::invalid_argument On an unknown or missing argument.
+ */
 Args parseArgs(int argc, char** argv) {
   Args args;
   for (int i = 1; i < argc; ++i) {
@@ -45,6 +59,7 @@ Args parseArgs(int argc, char** argv) {
   return args;
 }
 
+/// @brief Escapes quote and backslash for embedding @p value in a JSON string literal.
 std::string escapeJson(const std::string& value) {
   std::string out;
   for (const char c : value) {
@@ -58,6 +73,10 @@ std::string escapeJson(const std::string& value) {
   return out;
 }
 
+/**
+ * @brief Maps an output tensor name to its file name (`<name>.bin`).
+ * @throws std::invalid_argument If the name has characters outside [A-Za-z0-9_-].
+ */
 std::string outputFileName(const std::string& name) {
   for (const char c : name) {
     const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
@@ -67,6 +86,7 @@ std::string outputFileName(const std::string& name) {
   return name + ".bin";
 }
 
+/// @brief Copies a tensor's raw bytes to host memory (from the GPU when necessary).
 std::vector<std::byte> tensorBytes(const dli::Tensor& tensor) {
   std::vector<std::byte> bytes(tensor.nbytes());
   if (tensor.isCuda()) {
@@ -81,6 +101,7 @@ std::vector<std::byte> tensorBytes(const dli::Tensor& tensor) {
   return bytes;
 }
 
+/// @brief Writes @p bytes to a binary file; throws std::runtime_error if it cannot be opened.
 void writeBytes(const std::filesystem::path& path, const std::vector<std::byte>& bytes) {
   std::ofstream file(path, std::ios::binary);
   if (!file) throw std::runtime_error("failed to open output file: " + path.string());
@@ -89,6 +110,7 @@ void writeBytes(const std::filesystem::path& path, const std::vector<std::byte>&
                static_cast<std::streamsize>(bytes.size()));
 }
 
+/// @brief Writes the "dli.outputs.v1" manifest listing each output's dtype, shape and file.
 void writeManifest(const std::filesystem::path& path,
                    const std::vector<std::pair<std::string, dli::Tensor>>& outputs) {
   std::ofstream file(path);
@@ -111,6 +133,7 @@ void writeManifest(const std::filesystem::path& path,
 
 }  // namespace
 
+/// @brief Runs the graph and writes one .bin per output plus outputs.json; returns 0 on success.
 int main(int argc, char** argv) {
   try {
     const auto args = parseArgs(argc, argv);

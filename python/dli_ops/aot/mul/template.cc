@@ -1,3 +1,14 @@
+/**
+ * @file template.cc
+ * @brief Code-generation template for the AOT Triton operator "mul".
+ *
+ * This is a fragment, not a standalone translation unit: tools/build_triton_aot_ops.py
+ * replaces every double-brace HASH placeholder with the compiled kernel's hash suffix
+ * and splices the fragment into the generated plugin source. It is excluded from
+ * clang-format because of those placeholders.
+ */
+
+/// Operator "mul": Element-wise float32 multiplication of two CUDA tensors.
 class MulOp final : public dli::Operator {
  public:
   std::string type() const override { return "mul"; }
@@ -16,6 +27,7 @@ class MulOp final : public dli::Operator {
   }
 };
 
+/// Registers the "mul" operator factory with @p registry.
 void register_mul(dli::OperatorRegistry* registry) {
   registry->registerFactory("mul", [] { return std::make_unique<MulOp>(); });
 }

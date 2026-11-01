@@ -1,3 +1,8 @@
+/**
+ * @file test_tensor.cc
+ * @brief Tests dli::Tensor, dtype/device helpers and shape utilities.
+ */
+
 #include <ATen/ATen.h>
 
 #include <cstdint>
@@ -6,6 +11,7 @@
 #include "dli/tensor.h"
 #include "test_support.h"
 
+// Verifies: string conversions, host data access, views, external CUDA tensors and error cases.
 int main() {
   return dli_test::run("Tensor", [] {
     dli_test::expect(dli::toString(dli::DeviceType::Cpu) == "cpu", "cpu device string");

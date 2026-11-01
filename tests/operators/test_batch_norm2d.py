@@ -1,3 +1,5 @@
+"""Numeric test comparing the DLI batch norm2d operator with PyTorch."""
+
 from __future__ import annotations
 
 import unittest
@@ -10,7 +12,10 @@ from operator_test_support import CUDA_AVAILABLE, assert_close, run_operator
 
 @unittest.skipUnless(CUDA_AVAILABLE, "CUDA device is not available")
 class BatchNorm2dOperatorNumericsTest(unittest.TestCase):
+    """Checks the batch norm2d operator against its PyTorch reference."""
+
     def test_batch_norm2d(self) -> None:
+        """Verifies the batch norm2d operator output matches PyTorch within tolerance."""
         x = torch.arange(48, dtype=torch.float32).reshape(2, 3, 2, 4) / 8.0
         weight = torch.tensor([1.25, -0.5, 2.0])
         bias = torch.tensor([0.25, 1.0, -0.75])

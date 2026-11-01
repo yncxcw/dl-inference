@@ -1,3 +1,8 @@
+/**
+ * @file test_aten_operator.cc
+ * @brief Tests the built-in "aten" operator running through Engine.
+ */
+
 #include <ATen/ATen.h>
 
 #include <cstdint>
@@ -11,6 +16,8 @@
 #include "dli/tensor.h"
 #include "test_support.h"
 
+// Verifies: relu and add (with overload and ordered attr) match ATen results, and a missing "name"
+// throws.
 int main() {
   return dli_test::run("AtenOperator", [] {
     {

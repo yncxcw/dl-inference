@@ -1,3 +1,5 @@
+"""Numeric test comparing the DLI conv2d operator with PyTorch."""
+
 from __future__ import annotations
 
 import unittest
@@ -10,7 +12,10 @@ from operator_test_support import CUDA_AVAILABLE, assert_close, run_operator
 
 @unittest.skipUnless(CUDA_AVAILABLE, "CUDA device is not available")
 class Conv2dOperatorNumericsTest(unittest.TestCase):
+    """Checks the conv2d operator against its PyTorch reference."""
+
     def test_conv2d(self) -> None:
+        """Verifies the conv2d operator output matches PyTorch within tolerance."""
         x = torch.arange(16, dtype=torch.float32).reshape(1, 1, 4, 4) / 8.0
         weight = torch.tensor([[[[1.0, 0.0], [0.0, -1.0]]], [[[0.5, -0.25], [0.75, 0.125]]]])
         bias = torch.tensor([0.25, -0.5])

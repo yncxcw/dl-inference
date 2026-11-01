@@ -1,3 +1,5 @@
+"""End-to-end tests that export models to DLI and run them on CUDA."""
+
 from __future__ import annotations
 
 import argparse
@@ -12,6 +14,14 @@ from dli_export import export_module
 
 
 def _plugin() -> Path:
+    """Locates the AOT plugin shared library.
+
+    Returns:
+        Path to the library named by ``DLI_AOT_PLUGIN``.
+
+    Raises:
+        RuntimeError: If the variable is unset or the path is missing.
+    """
     value = os.environ.get("DLI_AOT_PLUGIN")
     if not value:
         raise RuntimeError("DLI_AOT_PLUGIN is not set")
@@ -24,6 +34,16 @@ def _plugin() -> Path:
 def _run_graph(
     graph_path: Path, weights_path: Path, inputs: dict[str, torch.Tensor]
 ) -> dict[str, torch.Tensor]:
+    """Loads an exported graph and runs it on CUDA.
+
+    Args:
+        graph_path: Path to the exported graph JSON.
+        weights_path: Path to the exported weights manifest.
+        inputs: Extra graph inputs that override or extend the weights.
+
+    Returns:
+        Graph outputs keyed by name.
+    """
     engine = dli.Engine()
     engine.load_library(str(_plugin()))
     graph_inputs = dli.load_weights(str(weights_path), "cuda")
@@ -36,10 +56,19 @@ def _run_graph(
 def _assert_close(
     actual: torch.Tensor, expected: torch.Tensor, *, rtol: float = 1e-3, atol: float = 1e-3
 ) -> None:
+    """Asserts two tensors are close after moving both to CPU.
+
+    Args:
+        actual: Tensor produced by the engine.
+        expected: Reference tensor.
+        rtol: Relative tolerance.
+        atol: Absolute tolerance.
+    """
     torch.testing.assert_close(actual.detach().cpu(), expected.detach().cpu(), rtol=rtol, atol=atol)
 
 
 def test_alexnet() -> None:
+    """Verifies the exported AlexNet graph matches eager PyTorch on CUDA."""
     from alexnet import create_model
 
     model = create_model().eval()
@@ -59,6 +88,7 @@ def test_alexnet() -> None:
 
 
 def test_qwen2() -> None:
+    """Verifies the exported Qwen2 graph matches eager PyTorch on CUDA."""
     from qwen2 import create_model
 
     model = create_model().eval()
@@ -72,6 +102,11 @@ def test_qwen2() -> None:
 
 
 def main() -> int:
+    """Runs one end-to-end model test selected on the command line.
+
+    Returns:
+        Process exit code; 0 on success or when CUDA is unavailable.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", choices=("alexnet", "qwen2"), required=True)
     args = parser.parse_args()

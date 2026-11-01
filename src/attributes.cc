@@ -1,3 +1,8 @@
+/**
+ * @file attributes.cc
+ * @brief Implements the non-template members of dli::Attributes.
+ */
+
 #include "dli/attributes.h"
 
 namespace dli {

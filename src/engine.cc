@@ -1,3 +1,8 @@
+/**
+ * @file engine.cc
+ * @brief Implements dli::Engine graph execution.
+ */
+
 #include "dli/engine.h"
 
 #include <stdexcept>
@@ -10,6 +15,8 @@ namespace dli {
 
 Engine::Engine() { registerAtenOperator(registry_); }
 
+// Executes nodes in order. Every node reads its inputs from the running `tensors` map, writes
+// its outputs back into it, and the map doubles as the value environment of the graph.
 TensorMap Engine::run(const Graph& graph, TensorMap tensors) {
   ExecutionContext context{&kv_cache_};
   for (const auto& node : graph.nodes) {

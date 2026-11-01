@@ -1,3 +1,14 @@
+/**
+ * @file template.cc
+ * @brief Code-generation template for the AOT Triton operator "matmul".
+ *
+ * This is a fragment, not a standalone translation unit: tools/build_triton_aot_ops.py
+ * replaces every double-brace HASH placeholder with the compiled kernel's hash suffix
+ * and splices the fragment into the generated plugin source. It is excluded from
+ * clang-format because of those placeholders.
+ */
+
+/// Returns the AOT matmul kernel specialized for the reduction size @p k; throws if none exists.
 dli::CudaAotKernel& matmulKernel(std::int64_t k) {
   switch (k) {
     case 2: return matmul_k2_{{HASH_matmul_k2}}_kernel();
@@ -11,6 +22,7 @@ dli::CudaAotKernel& matmulKernel(std::int64_t k) {
   throw std::invalid_argument("no AOT matmul specialization for k=" + std::to_string(k));
 }
 
+/// Operator "matmul": Matrix multiplication of float32 CUDA tensors.
 class MatmulOp final : public dli::Operator {
  public:
   std::string type() const override { return "matmul"; }
@@ -30,6 +42,7 @@ class MatmulOp final : public dli::Operator {
   }
 };
 
+/// Registers the "matmul" operator factory with @p registry.
 void register_matmul(dli::OperatorRegistry* registry) {
   registry->registerFactory("matmul", [] { return std::make_unique<MatmulOp>(); });
 }

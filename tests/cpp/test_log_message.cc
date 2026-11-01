@@ -1,3 +1,8 @@
+/**
+ * @file test_log_message.cc
+ * @brief Tests logging severity filtering and custom sinks.
+ */
+
 #include <string>
 #include <string_view>
 #include <vector>
@@ -5,6 +10,7 @@
 #include "dli/logging.h"
 #include "test_support.h"
 
+// Verifies: records reach the sink in order and the Warn threshold drops Debug and Info.
 int main() {
   return dli_test::run("LogMessage", [] {
     dli_test::expect(dli::logLevel() == dli::LogSeverity::Warn, "default logging level is WARN");
