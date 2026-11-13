@@ -6,19 +6,24 @@
 #include <ATen/ATen.h>
 
 #include <cstdint>
+#include <iostream>
 #include <vector>
 
 #include "dli/tensor.h"
 #include "test_support.h"
 
-// Verifies: string conversions, host data access, views, external CUDA tensors and error cases.
+// Verifies: string conversions, host data access (including bool tensors), clones, views, external
+// CUDA tensors and error cases.
 int main() {
   return dli_test::run("Tensor", [] {
     dli_test::expect(dli::toString(dli::DeviceType::Cpu) == "cpu", "cpu device string");
     dli_test::expect(dli::toString(dli::DeviceType::Cuda) == "cuda", "cuda device string");
     dli_test::expect(dli::deviceFromString("gpu") == dli::DeviceType::Cuda, "gpu device alias");
     dli_test::expect(dli::toString(dli::DType::Float32) == "float32", "float32 dtype string");
+    dli_test::expect(dli::toString(dli::DType::Bool) == "bool", "bool dtype string");
+    dli_test::expect(dli::dtypeFromString("bool") == dli::DType::Bool, "bool dtype parse");
     dli_test::expect(dli::dtypeFromString("i64") == dli::DType::Int64, "int64 dtype alias");
+    dli_test::expect(dli::byteSize(dli::DType::Bool) == sizeof(bool), "bool byte size");
     dli_test::expect(dli::byteSize(dli::DType::Int64) == sizeof(std::int64_t), "int64 byte size");
 
     auto torch_tensor =
@@ -29,6 +34,14 @@ int main() {
     dli_test::expect(tensor.nbytes() == 16, "host tensor nbytes");
     dli_test::expect(tensor.data<float>()[2] == 3.0f, "host tensor value");
 
+    auto tensor_copy = tensor.clone();
+    dli_test::expect(tensor_copy.isCpu(), "clone device");
+    dli_test::expect(tensor_copy.dtype() == dli::DType::Float32, "clone dtype");
+    dli_test::expect(tensor_copy.shape() == tensor.shape(), "clone shape");
+    dli_test::expectAllClose(tensor_copy.torchTensor(), torch_tensor);
+    tensor_copy.data<float>()[2] = 30.0f;
+    dli_test::expect(tensor.data<float>()[2] == 3.0f, "clone owns its storage");
+
     auto ints = dli::Tensor::zeros(dli::DType::Int64, {2, 2});
     dli_test::expect(ints.isCpu(), "zeros tensor is CPU");
     dli_test::expect(ints.data<std::int64_t>()[3] == 0, "zeros tensor value");
@@ -37,6 +50,17 @@ int main() {
     dli_test::expect(dli::sameShape(ints, dli::Tensor::zeros(dli::DType::Int64, {2, 2})),
                      "same shape helper");
     dli_test::expect(dli::contiguousOffset({2, 3, 4}, {1, 2, 3}) == 23, "contiguous offset");
+
+    auto bools = dli::Tensor::zeros(dli::DType::Bool, {2});
+    bools.data<bool>()[1] = true;
+    dli_test::expect(bools.dtype() == dli::DType::Bool, "bool tensor dtype");
+    dli_test::expect(bools.torchTensor().scalar_type() == at::kBool, "bool torch dtype");
+    dli_test::expect(bools.data<bool>()[1], "bool tensor value");
+    auto bools_copy = bools.clone();
+    dli_test::expect(bools_copy.dtype() == dli::DType::Bool, "bool clone dtype");
+    dli_test::expect(bools_copy.data<bool>()[1], "bool clone value");
+    bools_copy.data<bool>()[1] = false;
+    dli_test::expect(bools.data<bool>()[1], "bool clone owns its storage");
 
     auto* fake_ptr = reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x1000));
     auto external = dli::Tensor::externalCuda(dli::DType::Float32, {2, 3}, fake_ptr, 0);
@@ -48,11 +72,29 @@ int main() {
     dli_test::expect(cuda_view.deviceData() == fake_ptr, "CUDA view pointer");
     dli_test::expect(cuda_view.shape() == std::vector<std::int64_t>({3, 2}), "CUDA view shape");
 
+    // Cloning external CUDA memory copies it on the GPU, so this check needs one.
+    if (at::hasCUDA()) {
+      const auto values = at::arange(6, at::kFloat).view({2, 3});
+      auto cuda_values = dli::Tensor(values.to(at::kCUDA));
+      auto borrowed = dli::Tensor::externalCuda(dli::DType::Float32, {2, 3},
+                                                cuda_values.deviceData(), cuda_values.deviceId());
+      auto borrowed_copy = borrowed.clone();
+      dli_test::expect(borrowed_copy.isCuda(), "external clone device");
+      dli_test::expect(borrowed_copy.shape() == borrowed.shape(), "external clone shape");
+      dli_test::expect(borrowed_copy.deviceData() != cuda_values.deviceData(),
+                       "external clone owns new CUDA memory");
+      cuda_values.torchTensor().zero_();
+      dli_test::expectAllClose(borrowed_copy.torchTensor().cpu(), values);
+    } else {
+      std::cout << "No GPU: skipped cloning external CUDA memory\n";
+    }
+
     dli_test::expectThrows([] { dli::Tensor(dli::DType::Float32, {-1}); },
                            "negative tensor dim should throw");
     dli_test::expectThrows([&] { ints.dim(2); }, "tensor dim out of range should throw");
     dli_test::expectThrows([&] { ints.deviceData(); }, "CPU tensor deviceData should throw");
     dli_test::expectThrows([&] { ints.withShape({3}); }, "bad tensor view shape should throw");
+    dli_test::expectThrows([] { dli::Tensor().clone(); }, "uninitialized clone should throw");
     dli_test::expectThrows([] { dli::dtypeFromString("bad"); }, "bad dtype should throw");
     dli_test::expectThrows([] { dli::deviceFromString("bad"); }, "bad device should throw");
   });

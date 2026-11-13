@@ -20,7 +20,7 @@ namespace dli {
 /// Where a tensor's storage lives.
 enum class DeviceType { Cpu, Cuda };
 /// Supported element types.
-enum class DType { Float32, Int64 };
+enum class DType { Bool, Float32, Int64 };
 
 /**
  * @brief Returns the canonical name of a device type.
@@ -41,14 +41,14 @@ DeviceType deviceFromString(const std::string& device);
 /**
  * @brief Returns the canonical name of an element type.
  * @param dtype Element type.
- * @return "float32" or "int64".
+ * @return "bool", "float32" or "int64".
  * @throws std::invalid_argument If @p dtype is not a known value.
  */
 std::string toString(DType dtype);
 
 /**
  * @brief Parses an element type name.
- * @param dtype "float32"/"f32" or "int64"/"i64".
+ * @param dtype "bool", "float32"/"f32" or "int64"/"i64".
  * @return The matching element type.
  * @throws std::invalid_argument If the name is not recognized.
  */
@@ -84,7 +84,7 @@ class Tensor {
 
   /**
    * @brief Wraps an existing ATen tensor, making it contiguous if necessary.
-   * @param tensor Source tensor; must be float32 or int64 on CPU or CUDA.
+   * @param tensor Source tensor; must be bool, float32 or int64 on CPU or CUDA.
    * @throws std::invalid_argument If the dtype or device is unsupported.
    */
   explicit Tensor(at::Tensor tensor);
@@ -154,6 +154,18 @@ class Tensor {
   std::size_t nbytes() const;
 
   /**
+   * @brief Returns a tensor that owns a copy of this tensor's data.
+   *
+   * Works for ATen-backed tensors and for tensors that wrap external CUDA memory; the copy is
+   * ATen-owned and has the same dtype, shape and device.
+   *
+   * @return The copy.
+   * @throws std::logic_error If the tensor has no storage.
+   * @throws std::runtime_error If copying external CUDA memory fails.
+   */
+  Tensor clone() const;
+
+  /**
    * @brief Returns the raw device pointer.
    * @return Pointer to CUDA memory.
    * @throws std::logic_error If the tensor is not on CUDA.
@@ -181,7 +193,7 @@ class Tensor {
 
   /**
    * @brief Returns a typed host pointer to the elements.
-   * @tparam T float or std::int64_t, matching dtype().
+   * @tparam T bool, float or std::int64_t, matching dtype().
    * @return Pointer to contiguous CPU data.
    * @throws std::logic_error If the tensor is not on the CPU or @p T does not match dtype().
    */

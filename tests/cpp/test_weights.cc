@@ -11,7 +11,7 @@
 #include "dli/weights.h"
 #include "test_support.h"
 
-// Verifies: float32 and int64 tensors load correctly and a bad format throws.
+// Verifies: float32, int64 and bool tensors load correctly and a bad format throws.
 int main() {
   return dli_test::run("weights", [] {
     const auto bin_path = dli_test::tempPath("dli_test_weights", ".bin");
@@ -19,9 +19,11 @@ int main() {
     {
       const float weight[] = {1.0f, 2.0f, 3.0f, 4.0f};
       const std::int64_t ids[] = {7, 8};
+      const bool mask[] = {true, false};
       std::ofstream bin(bin_path, std::ios::binary);
       bin.write(reinterpret_cast<const char*>(weight), sizeof(weight));
       bin.write(reinterpret_cast<const char*>(ids), sizeof(ids));
+      bin.write(reinterpret_cast<const char*>(mask), sizeof(mask));
     }
     {
       std::ofstream manifest(manifest_path);
@@ -31,7 +33,8 @@ int main() {
                << R"(",
   "tensors": {
     "linear.weight": {"dtype": "float32", "shape": [2, 2], "offset": 0, "nbytes": 16},
-    "ids": {"dtype": "int64", "shape": [2], "offset": 16, "nbytes": 16}
+    "ids": {"dtype": "int64", "shape": [2], "offset": 16, "nbytes": 16},
+    "mask": {"dtype": "bool", "shape": [2], "offset": 32, "nbytes": 2}
   }
 })";
     }
@@ -42,6 +45,7 @@ int main() {
                      "weight shape");
     dli_test::expect(weights.at("linear.weight").data<float>()[3] == 4.0f, "weight value");
     dli_test::expect(weights.at("ids").data<std::int64_t>()[1] == 8, "int64 weight value");
+    dli_test::expect(weights.at("mask").data<bool>()[0], "bool weight value");
     std::remove(bin_path.c_str());
     std::remove(manifest_path.c_str());
 
