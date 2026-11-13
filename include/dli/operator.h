@@ -6,6 +6,7 @@
 #ifndef DLI_OPERATOR_H_
 #define DLI_OPERATOR_H_
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -13,6 +14,7 @@
 #include <vector>
 
 #include "dli/attributes.h"
+#include "dli/execution_state.h"
 #include "dli/kv_cache.h"
 #include "dli/tensor.h"
 
@@ -20,8 +22,13 @@ namespace dli {
 
 /// Per-run state shared with every operator.
 struct ExecutionContext {
-  /// KV cache owned by the Engine; may be null when no cache is available.
+  /// KV cache of the run's request state; may be null when no cache is available. It stays the
+  /// first field so operator plugins built against the one-field struct still find it.
   KVCache* kv_cache = nullptr;
+  /// Request state of the run, for operators that keep named state tensors; may be null.
+  ExecutionState* state = nullptr;
+  /// Absolute position of the run's first token (RunOptions::position_offset).
+  std::int64_t position_offset = 0;
 };
 
 /// Base class of all graph operators.
