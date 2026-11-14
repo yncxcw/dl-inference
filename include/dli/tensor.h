@@ -20,7 +20,7 @@ namespace dli {
 /// Where a tensor's storage lives.
 enum class DeviceType { Cpu, Cuda };
 /// Supported element types.
-enum class DType { Float32, Int64 };
+enum class DType { Bool, Float32, Int64 };
 
 /**
  * @brief Returns the canonical name of a device type.
@@ -152,6 +152,18 @@ class Tensor {
 
   /// @return Storage size in bytes (numel() times the element size).
   std::size_t nbytes() const;
+
+  /**
+   * @brief Returns a tensor that owns a copy of this tensor's data.
+   *
+   * Works for ATen-backed tensors and for tensors that wrap external CUDA memory; the copy is
+   * ATen-owned and has the same dtype, shape and device.
+   *
+   * @return The copy.
+   * @throws std::logic_error If the tensor has no storage.
+   * @throws std::runtime_error If copying external CUDA memory fails.
+   */
+  Tensor clone() const;
 
   /**
    * @brief Returns the raw device pointer.
