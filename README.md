@@ -73,18 +73,12 @@ python3 -c "import torch; print(torch.utils.cmake_prefix_path)"
 
 ## Continuous Integration
 
-GitHub Actions runs the CPU-safe build for every pull request and every push to
-`main`. The workflow uses Python 3.14, PyTorch 2.15, and Triton 3.9:
-
-```text
-.github/workflows/ci.yml
-```
-
-Standard `ubuntu-24.04` GitHub-hosted runners do not provide an NVIDIA GPU. CI
-therefore builds with `DLI_ENABLE_TRITON_AOT=OFF` and does not execute CTest.
-Test execution, AOT plugin compilation, operator numerics, and model end-to-end
-tests will be enabled after a self-hosted or GitHub larger GPU runner is
-available.
+GitHub Actions runs `.github/workflows/ci.yml` for every pull request and every
+push to `main`. It checks formatting, builds everything (including the Triton
+AOT operators) and the Python wheel on a GPU-free runner, and runs the full test
+suite on a self-hosted GPU runner. See
+[.github/workflows/README.md](.github/workflows/README.md) for how each job
+works.
 
 ## Formatting
 
