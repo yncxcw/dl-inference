@@ -42,6 +42,7 @@ add_library(dli_core SHARED
   src/cuda_driver.cc
   src/cuda_runtime.cc
   src/engine.cc
+  src/execution_state.cc
   src/graph.cc
   src/kv_cache.cc
   src/logging.cc
