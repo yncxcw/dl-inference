@@ -9,11 +9,15 @@
 #include <ATen/ATen.h>
 #include <ATen/core/dispatch/Dispatcher.h>
 #include <ATen/core/ivalue.h>
+#include <c10/core/MemoryFormat.h>
 
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -51,20 +55,187 @@ c10::IValue attributeToIValue(const Attributes& attrs, const std::string& name) 
   return attributeToIValue(it->second);
 }
 
-/// Flattens an ATen return value (tensor, tensor list or tuple of tensors) into a vector.
-std::vector<at::Tensor> tensorsFromIValue(const c10::IValue& value) {
-  if (value.isTensor()) return {value.toTensor()};
-  if (value.isTensorList()) return value.toTensorVector();
-  if (value.isTuple()) {
-    std::vector<at::Tensor> tensors;
-    for (const auto& item : value.toTupleRef().elements()) {
-      if (!item.isTensor())
-        throw std::invalid_argument("aten tuple output contains non-tensor value");
-      tensors.push_back(item.toTensor());
-    }
-    return tensors;
+/// Appends the tensors in an ATen return value to @p tensors: a tensor, or tensor lists, tuples
+/// and lists of them, recursively. None contributes nothing; any other value throws
+/// std::invalid_argument.
+void appendTensorsFromIValue(const c10::IValue& value, std::vector<at::Tensor>& tensors) {
+  if (value.isNone()) return;
+  if (value.isTensor()) {
+    tensors.push_back(value.toTensor());
+    return;
   }
-  throw std::invalid_argument("aten operator output is not a tensor, tensor list, or tensor tuple");
+  if (value.isTensorList()) {
+    const auto values = value.toTensorVector();
+    tensors.insert(tensors.end(), values.begin(), values.end());
+    return;
+  }
+  if (value.isTuple()) {
+    for (const auto& item : value.toTupleRef().elements()) {
+      appendTensorsFromIValue(item, tensors);
+    }
+    return;
+  }
+  if (value.isList()) {
+    for (const auto& item : value.toListRef()) {
+      appendTensorsFromIValue(item, tensors);
+    }
+    return;
+  }
+  throw std::invalid_argument("aten operator output contains an unsupported non-tensor value");
+}
+
+/// Flattens an ATen return value into a vector; see appendTensorsFromIValue().
+std::vector<at::Tensor> tensorsFromIValue(const c10::IValue& value) {
+  std::vector<at::Tensor> tensors;
+  appendTensorsFromIValue(value, tensors);
+  return tensors;
+}
+
+/// Splits @p value at every @p delimiter, keeping empty fields.
+std::vector<std::string> split(std::string_view value, char delimiter) {
+  std::vector<std::string> result;
+  std::size_t start = 0;
+  while (start <= value.size()) {
+    const auto end = value.find(delimiter, start);
+    result.emplace_back(
+        value.substr(start, end == std::string_view::npos ? value.size() - start : end - start));
+    if (end == std::string_view::npos) break;
+    start = end + 1;
+  }
+  return result;
+}
+
+/// Returns node input @p index_text (a decimal index) as an ATen tensor; throws
+/// std::invalid_argument if the index is out of range or the input is null.
+const at::Tensor& tensorArgument(const std::vector<const Tensor*>& inputs,
+                                 const std::string& index_text) {
+  const auto index = static_cast<std::size_t>(std::stoull(index_text));
+  if (index >= inputs.size() || inputs[index] == nullptr)
+    throw std::invalid_argument("aten argument references missing tensor input");
+  return inputs[index]->torchTensor();
+}
+
+/// Maps a dtype name written by the exporter (for example "float32") to the ATen scalar type.
+at::ScalarType scalarTypeFromName(const std::string& name) {
+  if (name == "bool") return at::kBool;
+  if (name == "uint8") return at::kByte;
+  if (name == "int8") return at::kChar;
+  if (name == "int16") return at::kShort;
+  if (name == "int32") return at::kInt;
+  if (name == "int64") return at::kLong;
+  if (name == "float16") return at::kHalf;
+  if (name == "bfloat16") return at::kBFloat16;
+  if (name == "float32") return at::kFloat;
+  if (name == "float64") return at::kDouble;
+  throw std::invalid_argument("unsupported aten dtype argument: " + name);
+}
+
+/// Parses a bool written as "true", "false", "1" or "0". Throws std::invalid_argument for anything
+/// else, so a spelling such as Python's "True" fails instead of decoding as false.
+bool parseBool(const std::string& text) {
+  if (text == "true" || text == "1") return true;
+  if (text == "false" || text == "0") return false;
+  throw std::invalid_argument("aten bool argument must be true, false, 1 or 0: " + text);
+}
+
+/// Decodes one entry of the "arguments" attribute into a boxed value. Entries are "n" (None) or
+/// "kind:value": t (tensor input index), i, f, b, s (scalars), il, fl, bl (comma-separated lists),
+/// tl and otl (tensor and optional-tensor lists of input indices), dtype, layout, memory_format,
+/// and device (the device of a tensor input). A bool, alone or in a list, must be true, false, 1
+/// or 0. Throws std::invalid_argument for an unknown kind or any other bool.
+///
+/// For example, an exported Qwen3.5 step graph writes the step's keys into layer 3's K/V cache
+/// with aten::index_copy(Tensor self, int dim, Tensor index, Tensor source):
+///
+///   {"name": "index_copy", "op": "aten", "inputs": ["clone_6", "add_43", "cat_8"],
+///    "outputs": ["next_state.layer.3.keys"],
+///    "attrs": {"name": "aten::index_copy", "overload": "",
+///              "arguments": ["t:0", "i:2", "t:1", "t:2"]}}
+///
+/// Its inputs are the key cache [1, 2, 4096, 256], the decode position [1] (int64) and the new
+/// keys [1, 2, 1, 256]. compute() decodes the entries in order, one per schema argument:
+///
+///   Entry   Decodes to                           Fills
+///   "t:0"   Tensor: input 0, clone_6 (cache)     self
+///   "i:2"   Int 2, the sequence axis             dim
+///   "t:1"   Tensor: input 1, add_43 (position)   index
+///   "t:2"   Tensor: input 2, cat_8 (new keys)    source
+c10::IValue decodeArgument(const std::string& spec, const std::vector<const Tensor*>& inputs) {
+  if (spec == "n") return c10::IValue();
+  const auto separator = spec.find(':');
+  const auto kind = spec.substr(0, separator);
+  const auto value = separator == std::string::npos ? std::string{} : spec.substr(separator + 1);
+  if (kind == "t") return c10::IValue(tensorArgument(inputs, value));
+  if (kind == "i") return c10::IValue(static_cast<std::int64_t>(std::stoll(value)));
+  if (kind == "f") return c10::IValue(std::stod(value));
+  if (kind == "b") return c10::IValue(parseBool(value));
+  if (kind == "s") return c10::IValue(value);
+  if (kind == "il") {
+    std::vector<std::int64_t> items;
+    if (!value.empty()) {
+      for (const auto& item : split(value, ',')) items.push_back(std::stoll(item));
+    }
+    return c10::IValue(std::move(items));
+  }
+  if (kind == "fl") {
+    std::vector<double> items;
+    if (!value.empty()) {
+      for (const auto& item : split(value, ',')) items.push_back(std::stod(item));
+    }
+    return c10::IValue(std::move(items));
+  }
+  if (kind == "bl") {
+    c10::List<bool> items;
+    if (!value.empty()) {
+      for (const auto& item : split(value, ',')) items.push_back(parseBool(item));
+    }
+    return c10::IValue(std::move(items));
+  }
+  if (kind == "tl") {
+    c10::List<at::Tensor> items;
+    if (!value.empty()) {
+      for (const auto& item : split(value, ',')) items.push_back(tensorArgument(inputs, item));
+    }
+    return c10::IValue(std::move(items));
+  }
+  if (kind == "otl") {
+    c10::List<std::optional<at::Tensor>> items;
+    if (!value.empty()) {
+      for (const auto& item : split(value, ',')) {
+        if (item == "n")
+          items.push_back(std::nullopt);
+        else
+          items.push_back(tensorArgument(inputs, item));
+      }
+    }
+    return c10::IValue(std::move(items));
+  }
+  if (kind == "dtype") {
+    return c10::IValue(static_cast<std::int64_t>(scalarTypeFromName(value)));
+  }
+  if (kind == "layout") {
+    if (value != "strided") throw std::invalid_argument("unsupported aten layout: " + value);
+    return c10::IValue(static_cast<std::int64_t>(at::kStrided));
+  }
+  if (kind == "memory_format") {
+    c10::MemoryFormat format;
+    if (value == "contiguous")
+      format = c10::MemoryFormat::Contiguous;
+    else if (value == "preserve")
+      format = c10::MemoryFormat::Preserve;
+    else if (value == "channels_last")
+      format = c10::MemoryFormat::ChannelsLast;
+    else if (value == "channels_last_3d")
+      format = c10::MemoryFormat::ChannelsLast3d;
+    else
+      throw std::invalid_argument("unsupported aten memory format: " + value);
+    return c10::IValue(static_cast<std::int64_t>(format));
+  }
+  if (kind == "device") {
+    const auto& anchor = tensorArgument(inputs, value);
+    return c10::IValue(anchor.device());
+  }
+  throw std::invalid_argument("unsupported encoded aten argument: " + spec);
 }
 
 /// Operator that runs any registered ATen schema selected by the node's attributes.
@@ -78,33 +249,54 @@ class AtenOperator final : public Operator {
     // for example name="aten::add" and overload="Tensor".
     const auto name = attrs.require<std::string>("name");
     const auto overload = attrs.value_or<std::string>("overload", "");
+    const auto arguments = attrs.value_or<std::vector<std::string>>("arguments", {});
     const auto attr_order = attrs.value_or<std::vector<std::string>>("attr_order", {});
 
     // Box tensor inputs and ordered scalar/list attributes into the c10 stack in
     // the same order expected by the selected ATen schema.
     c10::Stack stack;
-    stack.reserve(inputs.size() + attr_order.size());
-    for (const auto* input : inputs) {
-      if (input == nullptr) throw std::invalid_argument("aten operator received null input tensor");
-      stack.emplace_back(input->torchTensor());
-    }
-    for (const auto& attr_name : attr_order) {
-      if (attr_name == "name" || attr_name == "overload" || attr_name == "attr_order") {
-        throw std::invalid_argument("aten attr_order contains reserved attribute: " + attr_name);
+    if (!arguments.empty()) {
+      stack.reserve(arguments.size());
+      for (const auto& argument : arguments) stack.emplace_back(decodeArgument(argument, inputs));
+    } else {
+      stack.reserve(inputs.size() + attr_order.size());
+      for (const auto* input : inputs) {
+        if (input == nullptr)
+          throw std::invalid_argument("aten operator received null input tensor");
+        stack.emplace_back(input->torchTensor());
       }
-      stack.emplace_back(attributeToIValue(attrs, attr_name));
+      for (const auto& attr_name : attr_order) {
+        if (attr_name == "name" || attr_name == "overload" || attr_name == "attr_order" ||
+            attr_name == "arguments") {
+          throw std::invalid_argument("aten attr_order contains reserved attribute: " + attr_name);
+        }
+        stack.emplace_back(attributeToIValue(attrs, attr_name));
+      }
     }
 
     // Resolve the schema through PyTorch's dispatcher and invoke it with boxed
     // arguments. callBoxed replaces the input stack contents with boxed returns.
     const auto handle =
         c10::Dispatcher::singleton().findSchemaOrThrow(name.c_str(), overload.c_str());
+    for (const auto& argument : handle.schema().arguments()) {
+      const auto* alias_info = argument.alias_info();
+      if (alias_info != nullptr && alias_info->isWrite()) {
+        throw std::invalid_argument(
+            "mutating ATen schemas are not supported; export a functional graph: " + name);
+      }
+    }
     handle.callBoxed(&stack);
     if (stack.empty()) throw std::runtime_error("aten operator produced no boxed return value");
 
-    // Normalize ATen's possible tensor return shapes into a flat tensor vector
-    // and move each returned tensor into the caller-provided DLI output slots.
-    auto returned = tensorsFromIValue(stack.back());
+    // Boxed calls place one IValue on the stack per schema return. A return may
+    // itself be a tensor list or tuple, so flatten both levels before assigning
+    // the DLI output edges.
+    std::vector<at::Tensor> returned;
+    for (const auto& value : stack) {
+      auto tensors = tensorsFromIValue(value);
+      returned.insert(returned.end(), std::make_move_iterator(tensors.begin()),
+                      std::make_move_iterator(tensors.end()));
+    }
     if (returned.size() != outputs.size()) {
       throw std::invalid_argument("aten operator output count mismatch");
     }
