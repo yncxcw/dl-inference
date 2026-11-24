@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <string>
 
 #include "dli/kv_cache.h"
@@ -50,11 +51,11 @@ class ExecutionState {
    * replacements with setTensor(), which keeps per-run copies isolated.
    *
    * @param name State tensor name, as used by the graph's state inputs and outputs.
-   * @return The stored tensor, or null if @p name is not set. The pointer stays valid until
-   *         reset() or destruction; setTensor() with the same name replaces the value it
-   *         points to.
+   * @return A copy of the stored tensor handle, or std::nullopt if @p name is not set. The copy
+   *         shares storage with the stored tensor, so the lookup is cheap, and it stays valid
+   *         after setTensor() or reset() replaces or drops the stored one.
    */
-  const Tensor* findTensor(const std::string& name) const;
+  std::optional<Tensor> findTensor(const std::string& name) const;
 
   /**
    * @brief Stores or replaces a named state tensor.

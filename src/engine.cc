@@ -6,6 +6,7 @@
 #include "dli/engine.h"
 
 #include <algorithm>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -38,8 +39,8 @@ TensorMap Engine::run(const Graph& graph, TensorMap tensors, const RunOptions& o
                   [](const Node& node) { return node.op_type != "aten"; });
   ExecutionState pending_state = has_custom_operator ? state->deepClone() : ExecutionState(*state);
   for (const auto& [input_name, state_key] : graph.state_inputs) {
-    const Tensor* state_tensor = pending_state.findTensor(state_key);
-    if (state_tensor == nullptr) {
+    std::optional<Tensor> state_tensor = pending_state.findTensor(state_key);
+    if (!state_tensor) {
       const auto initializer = graph.state_initializers.find(state_key);
       if (initializer == graph.state_initializers.end()) {
         throw std::invalid_argument("missing state tensor and initializer: " + state_key);
