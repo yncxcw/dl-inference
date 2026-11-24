@@ -5,13 +5,15 @@
 
 #include "dli/execution_state.h"
 
+#include <optional>
 #include <utility>
 
 namespace dli {
 
-const Tensor* ExecutionState::findTensor(const std::string& name) const {
+std::optional<Tensor> ExecutionState::findTensor(const std::string& name) const {
   const auto it = tensors_.find(name);
-  return it == tensors_.end() ? nullptr : &it->second;
+  if (it == tensors_.end()) return std::nullopt;
+  return it->second;
 }
 
 void ExecutionState::setTensor(std::string name, Tensor tensor) {

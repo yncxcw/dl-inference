@@ -39,7 +39,7 @@ class StateCounterOp final : public dli::Operator {
     if (!inputs.empty() || outputs.size() != 1 || context.state == nullptr)
       throw std::invalid_argument("state_counter_test arity or state");
     std::int64_t count = 0;
-    if (const auto* previous = context.state->findTensor("counter")) {
+    if (const auto previous = context.state->findTensor("counter")) {
       count = previous->data<std::int64_t>()[0];
     }
     dli::Tensor next(dli::DType::Int64, {1});
@@ -59,8 +59,8 @@ class MutateStateThenFailOp final : public dli::Operator {
   void compute(const std::vector<const dli::Tensor*>&, const std::vector<dli::Tensor*>&,
                const dli::Attributes&, dli::ExecutionContext& context) const override {
     if (context.state == nullptr) throw std::invalid_argument("missing state");
-    const auto* stored = context.state->findTensor("mutable");
-    if (stored == nullptr) throw std::invalid_argument("missing mutable tensor");
+    const auto stored = context.state->findTensor("mutable");
+    if (!stored) throw std::invalid_argument("missing mutable tensor");
     auto alias = stored->torchTensor();
     alias.add_(1);
     throw std::runtime_error("failure after in-place state mutation");
@@ -125,6 +125,19 @@ int main() {
     dli_test::expect(after_failure.at("result").data<std::int64_t>()[0] == 3,
                      "state rolls back when a later node fails");
 
+    dli::ExecutionState lookup_state;
+    dli_test::expect(!lookup_state.findTensor("slot").has_value(), "missing tensor is nullopt");
+    dli::Tensor slot_value(dli::DType::Int64, {1});
+    slot_value.data<std::int64_t>()[0] = 1;
+    lookup_state.setTensor("slot", slot_value);
+    const auto held = lookup_state.findTensor("slot");
+    dli::Tensor replacement(dli::DType::Int64, {1});
+    replacement.data<std::int64_t>()[0] = 2;
+    lookup_state.setTensor("slot", replacement);
+    lookup_state.reset();
+    dli_test::expect(held.has_value() && held->data<std::int64_t>()[0] == 1,
+                     "looked-up tensor survives setTensor() and reset()");
+
     dli::ExecutionState mutating_state;
     dli::Tensor mutable_tensor(dli::DType::Int64, {1});
     mutable_tensor.data<std::int64_t>()[0] = 5;
@@ -150,7 +163,7 @@ int main() {
         "custom operator initializer mutation failure should throw");
     dli_test::expect(mutable_tensor.data<std::int64_t>()[0] == 5,
                      "failed custom operator cannot mutate a shared initializer");
-    dli_test::expect(initializing_state.findTensor("mutable") == nullptr,
+    dli_test::expect(!initializing_state.findTensor("mutable").has_value(),
                      "failed initialization is not published");
 
     first_state.reset();
